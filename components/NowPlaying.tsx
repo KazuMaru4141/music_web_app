@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Play, Pause, Save, Check, SkipBack, SkipForward, ListPlus } from 'lucide-react';
+import { Play, Pause, Plus, Check, SkipBack, SkipForward, ListPlus, CheckCircle2 } from 'lucide-react';
 
 export default function NowPlaying() {
     const [track, setTrack] = useState<any>(null);
@@ -10,6 +10,7 @@ export default function NowPlaying() {
     const [controlLoading, setControlLoading] = useState(false);
     const [rating, setRating] = useState(0);
     const [error, setError] = useState('');
+    const [queuedTracks, setQueuedTracks] = useState<Set<string>>(new Set());
 
     const fetchTrack = async () => {
         try {
@@ -144,7 +145,15 @@ export default function NowPlaying() {
                 const err = await res.json();
                 throw new Error(err.error || 'Failed to add to queue');
             }
-            // Brief visual feedback could be added here
+            // Show success feedback
+            setQueuedTracks(prev => new Set(prev).add(uri));
+            setTimeout(() => {
+                setQueuedTracks(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(uri);
+                    return newSet;
+                });
+            }, 2000);
         } catch (e: any) {
             console.error("Failed to add to queue", e);
             alert(`Error: ${e.message}`);
@@ -286,14 +295,17 @@ export default function NowPlaying() {
                     </div>
                 </div>
                 {/* Action Buttons */}
-                <div className="flex space-x-2 md:space-x-3 mt-2 md:mt-4">
+                <div className="flex items-center space-x-2 md:space-x-3 mt-2 md:mt-4">
                     <button
                         onClick={handleSaveAlbum}
                         disabled={track.is_album_saved}
-                        className={`flex-1 flex items-center justify-center space-x-1 md:space-x-2 py-2 md:py-3 rounded-lg md:rounded-xl transition font-medium text-sm md:text-base ${track.is_album_saved ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800 cursor-default' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+                        className={`w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-full transition ${track.is_album_saved
+                            ? 'bg-green-500 text-white cursor-default'
+                            : 'border-2 border-gray-400 hover:border-white text-gray-400 hover:text-white hover:scale-105'
+                            }`}
+                        title={track.is_album_saved ? 'Saved' : 'Save to Library'}
                     >
-                        {track.is_album_saved ? <Check size={16} /> : <Save size={16} />}
-                        <span>{track.is_album_saved ? 'Saved' : 'Save'}</span>
+                        {track.is_album_saved ? <Check size={20} strokeWidth={3} /> : <Plus size={20} strokeWidth={2} />}
                     </button>
                     {/* Replaced Like Button with Last.fm Stats */}
                     <div className="flex-1 flex flex-col items-center justify-center bg-gray-800/50 rounded-lg md:rounded-xl p-1.5 md:p-2 border border-gray-700">
@@ -320,10 +332,14 @@ export default function NowPlaying() {
                                     <div className="flex items-center space-x-1 shrink-0">
                                         <button
                                             onClick={() => handleAddToQueue(t.uri)}
-                                            className="p-1 text-gray-500 hover:text-green-400 transition mr-1"
-                                            title="Add to Queue"
+                                            className={`p-1 transition mr-1 ${queuedTracks.has(t.uri)
+                                                    ? 'text-green-400'
+                                                    : 'text-gray-500 hover:text-green-400'
+                                                }`}
+                                            title={queuedTracks.has(t.uri) ? 'Added to Queue!' : 'Add to Queue'}
+                                            disabled={queuedTracks.has(t.uri)}
                                         >
-                                            <ListPlus size={14} />
+                                            {queuedTracks.has(t.uri) ? <CheckCircle2 size={14} /> : <ListPlus size={14} />}
                                         </button>
                                         {[1, 2, 3, 4, 5].map((star) => (
                                             <span
