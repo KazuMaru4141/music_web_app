@@ -25,10 +25,10 @@ export default function Home() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 p-8 overflow-y-auto">
+      <div className="flex-1 p-3 md:p-8 overflow-y-auto">
         {/* Removed Dashboard Header for cleaner look */}
 
-        <section className="mb-12">
+        <section className="mb-6 md:mb-12">
           <NowPlaying />
         </section>
 
