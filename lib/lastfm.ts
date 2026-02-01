@@ -48,17 +48,13 @@ export async function getUserPlayCounts(artist?: string, album?: string, track?:
 
         // Calculate Today's Plays in Japan Standard Time (JST, UTC+9)
         const now = new Date();
-        // Calculate JST midnight: Get current UTC time, add 9 hours, then find midnight
-        const jstOffset = 9 * 60; // JST is UTC+9 in minutes
-        const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-        const jstDate = new Date(now);
-        jstDate.setUTCHours(0, 0, 0, 0); // Set to UTC midnight
-        // Subtract 9 hours to get JST midnight in UTC
-        const jstMidnightUTC = new Date(jstDate.getTime() - jstOffset * 60 * 1000);
-        // If current UTC time is before JST midnight (i.e., it's still "yesterday" in JST), go back a day
-        if (now < jstMidnightUTC) {
-            jstMidnightUTC.setUTCDate(jstMidnightUTC.getUTCDate() - 1);
-        }
+        // Step 1: Get current time in JST by adding 9 hours
+        const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        // Step 2: Get midnight of that JST date (in the shifted representation)
+        const jstMidnightShifted = new Date(jstNow);
+        jstMidnightShifted.setUTCHours(0, 0, 0, 0);
+        // Step 3: Convert back to actual UTC by subtracting 9 hours
+        const jstMidnightUTC = new Date(jstMidnightShifted.getTime() - 9 * 60 * 60 * 1000);
         const fromTimestamp = Math.floor(jstMidnightUTC.getTime() / 1000).toString();
 
         const recent = await fetchLastFm('user.getrecenttracks', {
