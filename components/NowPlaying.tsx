@@ -222,8 +222,22 @@ export default function NowPlaying() {
                     <h2 className="text-xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400 line-clamp-2">
                         {track.name}
                     </h2>
-                    <p className="text-base md:text-xl text-gray-300 font-medium mt-1 line-clamp-1">{track.artist}</p>
-                    <p className="text-xs md:text-sm text-gray-500 line-clamp-1">{track.album}</p>
+                    <a
+                        href={track.artist_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-base md:text-xl text-gray-300 font-medium mt-1 line-clamp-1 hover:text-green-400 transition inline-block"
+                    >
+                        {track.artist}
+                    </a>
+                    <a
+                        href={track.album_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs md:text-sm text-gray-500 line-clamp-1 hover:text-green-400 transition block"
+                    >
+                        {track.album}
+                    </a>
                 </div>
 
                 {/* Status Badges */}
