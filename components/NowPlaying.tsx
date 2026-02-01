@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Play, Pause, Plus, Check, SkipBack, SkipForward, ListPlus, CheckCircle2, ChevronRight, User, Disc3, Music, Hash, CalendarDays } from 'lucide-react';
+import { Play, Pause, Plus, SkipBack, SkipForward, ListPlus, CheckCircle2, ChevronRight, User, Disc3, Music, Hash, CalendarDays, Heart } from 'lucide-react';
 
 // Toast notification component
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -236,18 +236,32 @@ export default function NowPlaying() {
                         href={track.artist_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-sm md:text-base text-gray-300 hover:text-green-400 transition truncate block"
+                        className="text-sm md:text-base text-gray-300 hover:text-pink-400 transition truncate block"
                     >
                         {track.artist}
                     </a>
-                    <a
-                        href={track.album_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-gray-500 hover:text-green-400 transition truncate block"
-                    >
-                        {track.album}
-                    </a>
+                    {/* Album row with heart icon */}
+                    <div className="flex items-center space-x-2">
+                        <a
+                            href={track.album_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-gray-500 hover:text-pink-400 transition truncate"
+                        >
+                            {track.album}
+                        </a>
+                        <button
+                            onClick={handleSaveAlbum}
+                            disabled={track.is_album_saved}
+                            className={`shrink-0 transition ${track.is_album_saved
+                                ? 'text-pink-500 cursor-default'
+                                : 'text-gray-500 hover:text-pink-400 hover:scale-110'
+                                }`}
+                            title={track.is_album_saved ? 'In Library' : 'Add to Library'}
+                        >
+                            <Heart size={14} fill={track.is_album_saved ? 'currentColor' : 'none'} />
+                        </button>
+                    </div>
 
                     {/* Badges - Unified gray/white palette */}
                     <div className="flex flex-wrap gap-1 mt-1">
@@ -268,7 +282,7 @@ export default function NowPlaying() {
 
             {/* ===== STATS SECTION: Playback Counts with Icons ===== */}
             <div className="flex items-center justify-between bg-black/30 p-3 rounded-lg mb-4">
-                {/* Left: Scrobble counts */}
+                {/* Left: Scrobble counts (basic info) */}
                 <div className="flex items-center space-x-3">
                     <div className="flex items-center space-x-1.5 text-gray-400">
                         <User size={12} className="text-gray-500" />
@@ -283,7 +297,9 @@ export default function NowPlaying() {
                         <span className="font-bold text-white text-sm">{track.stats?.track || 0}</span>
                     </div>
                 </div>
-                {/* Right: Total & Today - Separated */}
+                {/* Separator */}
+                <div className="w-px h-6 bg-gray-700"></div>
+                {/* Right: Total & Today (history) */}
                 <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-1.5">
                         <Hash size={12} className="text-gray-500" />
@@ -328,36 +344,23 @@ export default function NowPlaying() {
                 </button>
             </div>
 
-            {/* ===== BOTTOM SECTION: Compact Controls ===== */}
-            <div className="flex items-center justify-between bg-gray-800/40 p-3 rounded-xl border border-gray-700/50">
-                {/* Playback Controls - Small */}
-                <div className="flex items-center space-x-3">
+            {/* ===== BOTTOM SECTION: Centered Playback Controls ===== */}
+            <div className="flex items-center justify-center bg-gray-800/40 p-3 rounded-xl border border-gray-700/50">
+                {/* Playback Controls - Centered */}
+                <div className="flex items-center space-x-4">
                     <button onClick={() => handleControl('previous')} className="text-gray-400 hover:text-white transition">
-                        <SkipBack size={18} fill="currentColor" />
+                        <SkipBack size={20} fill="currentColor" />
                     </button>
                     <button
                         onClick={() => handleControl(track.is_playing ? 'pause' : 'play')}
-                        className="w-10 h-10 flex items-center justify-center bg-white hover:bg-gray-200 text-black rounded-full transition"
+                        className="w-12 h-12 flex items-center justify-center bg-white hover:bg-gray-200 text-black rounded-full transition shadow-lg"
                     >
-                        {track.is_playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                        {track.is_playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
                     </button>
                     <button onClick={() => handleControl('next')} className="text-gray-400 hover:text-white transition">
-                        <SkipForward size={18} fill="currentColor" />
+                        <SkipForward size={20} fill="currentColor" />
                     </button>
                 </div>
-
-                {/* Save Button - Pink when saved */}
-                <button
-                    onClick={handleSaveAlbum}
-                    disabled={track.is_album_saved}
-                    className={`w-10 h-10 flex items-center justify-center rounded-full transition ${track.is_album_saved
-                        ? 'bg-pink-500 text-white cursor-default'
-                        : 'border-2 border-gray-400 hover:border-pink-400 text-gray-400 hover:text-pink-400 hover:scale-105'
-                        }`}
-                    title={track.is_album_saved ? 'Saved' : 'Save to Library'}
-                >
-                    {track.is_album_saved ? <Check size={18} strokeWidth={3} /> : <Plus size={18} strokeWidth={2} />}
-                </button>
             </div>
 
             {/* ===== ALBUM TRACKS SECTION ===== */}
@@ -388,7 +391,7 @@ export default function NowPlaying() {
                                     {[1, 2, 3, 4, 5].map((star) => (
                                         <span
                                             key={star}
-                                            className={`text-[10px] ${t.rating >= star ? 'text-yellow-400' : 'text-gray-600'}`}
+                                            className={`text-[10px] ${t.rating >= star ? 'text-yellow-400' : 'text-gray-500'}`}
                                         >
                                             ★
                                         </span>
