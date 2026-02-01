@@ -172,7 +172,7 @@ export default function NowPlaying() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 p-4 md:p-6 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl md:rounded-3xl border border-gray-700 shadow-2xl">
             {/* Album Art Section */}
             <div className="flex flex-col space-y-3 md:space-y-4">
-                <div className="relative group aspect-square rounded-xl md:rounded-2xl overflow-hidden shadow-lg border border-gray-700/50 max-w-[280px] md:max-w-full mx-auto md:mx-0">
+                <div className="relative aspect-square rounded-xl md:rounded-2xl overflow-hidden shadow-lg border border-gray-700/50 w-[280px] md:w-full mx-auto md:mx-0 group">
                     <Image
                         src={track.image}
                         alt={track.album}
@@ -182,7 +182,7 @@ export default function NowPlaying() {
                 </div>
 
                 {/* Playback Controls (Moved here) */}
-                <div className="flex items-center justify-center space-x-8 md:space-x-6 bg-gray-800/40 py-2 md:py-3 rounded-xl md:rounded-2xl border border-gray-700/50 backdrop-blur-sm max-w-[280px] md:max-w-full mx-auto md:mx-0">
+                <div className="flex items-center justify-center space-x-8 md:space-x-6 bg-gray-800/40 py-2 md:py-3 rounded-xl md:rounded-2xl border border-gray-700/50 backdrop-blur-sm w-[280px] md:w-full mx-auto md:mx-0">
                     <button onClick={() => handleControl('previous')} className="text-gray-400 hover:text-white transition transform active:scale-90">
                         <SkipBack size={20} fill="currentColor" className="md:w-6 md:h-6" />
                     </button>
