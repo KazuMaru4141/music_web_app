@@ -253,13 +253,13 @@ export default function NowPlaying() {
                         <button
                             onClick={handleSaveAlbum}
                             disabled={track.is_album_saved}
-                            className={`shrink-0 transition ${track.is_album_saved
+                            className={`shrink-0 p-1.5 -m-1 transition ${track.is_album_saved
                                 ? 'text-pink-500 cursor-default'
                                 : 'text-gray-500 hover:text-pink-400 hover:scale-110'
                                 }`}
                             title={track.is_album_saved ? 'In Library' : 'Add to Library'}
                         >
-                            <Heart size={14} fill={track.is_album_saved ? 'currentColor' : 'none'} />
+                            <Heart size={18} fill={track.is_album_saved ? 'currentColor' : 'none'} />
                         </button>
                     </div>
 
@@ -268,8 +268,8 @@ export default function NowPlaying() {
                         <span className="px-2 py-0.5 bg-gray-700/50 text-gray-300 text-[10px] rounded-full border border-gray-600 capitalize">
                             {track.album_type || 'Album'}
                         </span>
-                        <span className="px-2 py-0.5 bg-gray-700/50 text-gray-300 text-[10px] rounded-full border border-gray-600">
-                            {track.genre || 'Pop'}
+                        <span className="px-2 py-0.5 bg-gray-700/50 text-gray-300 text-[10px] rounded-full border border-gray-600 capitalize">
+                            {(track.genre || 'Pop').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')}
                         </span>
                         {track.album_score !== undefined && (
                             <span className="px-2 py-0.5 bg-pink-900/40 text-pink-400 text-[10px] rounded-full border border-pink-800 font-bold">
@@ -314,7 +314,7 @@ export default function NowPlaying() {
 
             {/* ===== CENTER SECTION: Giant Rating UI ===== */}
             <div className="flex flex-col items-center py-6 bg-gray-800/30 rounded-2xl border border-gray-700/50 mb-4">
-                <p className="text-gray-400 text-xs mb-2 uppercase tracking-widest">Rate This Track</p>
+                <p className="text-gray-300 text-xs mb-3 uppercase tracking-[0.2em] font-medium">Rate This Track</p>
                 <div className="flex items-center justify-center space-x-2 md:space-x-3">
                     {[1, 2, 3, 4, 5].map((star) => (
                         <button
@@ -322,7 +322,7 @@ export default function NowPlaying() {
                             onClick={() => handleRate(star)}
                             className={`text-4xl md:text-5xl transition-all duration-200 transform hover:scale-110 active:scale-95 ${rating >= star
                                 ? 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]'
-                                : 'text-gray-600 hover:text-gray-400'
+                                : 'text-gray-500 hover:text-gray-300 drop-shadow-[0_0_1px_rgba(255,255,255,0.3)]'
                                 }`}
                         >
                             ★
