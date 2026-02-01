@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
             artist_url: item.artists[0].external_urls.spotify,
             album: item.album.name,
             album_url: item.album.external_urls.spotify,
+            album_type: item.album.album_type,
             image: item.album.images[0]?.url,
             uri: item.uri,
             url: item.external_urls.spotify,

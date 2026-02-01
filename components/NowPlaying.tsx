@@ -242,8 +242,8 @@ export default function NowPlaying() {
 
                 {/* Status Badges */}
                 <div className="flex flex-wrap justify-center md:justify-start gap-2">
-                    <span className="px-2 md:px-3 py-1 bg-green-900/50 text-green-400 text-[10px] md:text-xs rounded-full border border-green-800 backdrop-blur-sm">
-                        Now Playing
+                    <span className="px-2 md:px-3 py-1 bg-green-900/50 text-green-400 text-[10px] md:text-xs rounded-full border border-green-800 backdrop-blur-sm capitalize">
+                        {track.album_type || 'Album'}
                     </span>
                     <span className="px-2 md:px-3 py-1 bg-blue-900/50 text-blue-400 text-[10px] md:text-xs rounded-full border border-blue-800 backdrop-blur-sm">
                         {track.genre || 'Pop'}
