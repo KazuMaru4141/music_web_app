@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Play, Pause, Save, Check, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, Save, Check, SkipBack, SkipForward, ListPlus } from 'lucide-react';
 
 export default function NowPlaying() {
     const [track, setTrack] = useState<any>(null);
@@ -129,6 +129,24 @@ export default function NowPlaying() {
             }
         } catch (e: any) {
             console.error("Failed to save album", e);
+            alert(`Error: ${e.message}`);
+        }
+    };
+
+    const handleAddToQueue = async (uri: string) => {
+        try {
+            const res = await fetch('/api/player/queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uri })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to add to queue');
+            }
+            // Brief visual feedback could be added here
+        } catch (e: any) {
+            console.error("Failed to add to queue", e);
             alert(`Error: ${e.message}`);
         }
     };
@@ -286,6 +304,13 @@ export default function NowPlaying() {
                                         </span>
                                     </div>
                                     <div className="flex items-center space-x-1 shrink-0">
+                                        <button
+                                            onClick={() => handleAddToQueue(t.uri)}
+                                            className="p-1 text-gray-500 hover:text-green-400 transition mr-1"
+                                            title="Add to Queue"
+                                        >
+                                            <ListPlus size={14} />
+                                        </button>
                                         {[1, 2, 3, 4, 5].map((star) => (
                                             <span
                                                 key={star}
