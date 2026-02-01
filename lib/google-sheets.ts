@@ -206,3 +206,14 @@ export async function getAlbumTrackRatings(trackIds: string[]): Promise<Record<s
 
     return result;
 }
+
+export async function checkIfAlbumSaved(albumId: string): Promise<boolean> {
+    const sheets = await getSheetsClient();
+    const readRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID_ALBUMS,
+        range: `${SHEET_NAME_ALBUMS}!G:G`,
+    });
+
+    const albumIds = readRes.data.values?.flat() || [];
+    return albumIds.includes(albumId);
+}

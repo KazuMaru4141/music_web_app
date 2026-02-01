@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import spotifyApi, { SpotifyTrack } from '@/lib/spotify';
 import { getUserPlayCounts } from '@/lib/lastfm';
-import { getTrackRating, getAlbumTrackRatings } from '@/lib/google-sheets';
+import { getTrackRating, getAlbumTrackRatings, checkIfAlbumSaved } from '@/lib/google-sheets';
 import { cookies } from 'next/headers';
 
 export async function GET(req: NextRequest) {
@@ -62,6 +62,17 @@ export async function GET(req: NextRequest) {
             rating: albumRatings[t.id] || 0
         }));
 
+        // Calculate Album Score (Streamlit Logic)
+        const trackPoints: Record<number, number> = { 1: 0, 2: 10, 3: 60, 4: 80, 5: 100 };
+        let totalPoints = 0;
+        albumTracksWithRatings.forEach(t => {
+            totalPoints += trackPoints[t.rating] || 0;
+        });
+        const albumScore = albumTracks.length > 0 ? (totalPoints / albumTracks.length) : 0;
+
+        // Check if album is saved
+        const isAlbumSaved = await checkIfAlbumSaved(item.album.id);
+
         const trackData = {
             id: item.id,
             name: item.name,
@@ -77,7 +88,9 @@ export async function GET(req: NextRequest) {
             stats: stats,
             rating: rating,
             genre: genres.length > 0 ? genres[0] : 'Unknown',
-            album_tracks: albumTracksWithRatings
+            album_tracks: albumTracksWithRatings,
+            album_score: parseFloat(albumScore.toFixed(1)),
+            is_album_saved: isAlbumSaved
         };
 
         return NextResponse.json(trackData);

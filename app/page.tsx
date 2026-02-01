@@ -26,10 +26,7 @@ export default function Home() {
 
       {/* Main Content */}
       <div className="flex-1 p-8 overflow-y-auto">
-        <header className="flex justify-between items-center mb-8">
-          <h2 className="text-3xl font-bold">Dashboard</h2>
-          {/* Mobile Menu Button could go here */}
-        </header>
+        {/* Removed Dashboard Header for cleaner look */}
 
         <section className="mb-12">
           <NowPlaying />

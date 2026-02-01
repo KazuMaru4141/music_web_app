@@ -186,6 +186,11 @@ export default function NowPlaying() {
                     <span className="px-3 py-1 bg-blue-900/50 text-blue-400 text-xs rounded-full border border-blue-800 backdrop-blur-sm">
                         {track.genre || 'Pop'}
                     </span>
+                    {track.album_score !== undefined && (
+                        <span className="px-3 py-1 bg-yellow-900/40 text-yellow-400 text-xs rounded-full border border-yellow-800 backdrop-blur-sm font-bold">
+                            Score: {track.album_score}
+                        </span>
+                    )}
                 </div>
 
                 {/* Rating */}
@@ -220,9 +225,13 @@ export default function NowPlaying() {
                 </div>
                 {/* Action Buttons */}
                 <div className="flex space-x-3 mt-4">
-                    <button onClick={handleSaveAlbum} className="flex-1 flex items-center justify-center space-x-2 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl transition font-medium">
-                        <Save size={18} />
-                        <span>Save Album</span>
+                    <button
+                        onClick={handleSaveAlbum}
+                        disabled={track.is_album_saved}
+                        className={`flex-1 flex items-center justify-center space-x-2 py-3 rounded-xl transition font-medium ${track.is_album_saved ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800 cursor-default' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+                    >
+                        {track.is_album_saved ? <Check size={18} /> : <Save size={18} />}
+                        <span>{track.is_album_saved ? 'Saved' : 'Save Album'}</span>
                     </button>
                     {/* Replaced Like Button with Last.fm Stats */}
                     <div className="flex-1 flex flex-col items-center justify-center bg-gray-800/50 rounded-xl p-2 border border-gray-700">
