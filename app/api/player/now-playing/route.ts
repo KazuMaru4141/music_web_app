@@ -9,11 +9,13 @@ export async function GET(req: NextRequest) {
     const accessToken = cookieStore.get('spotify_access_token')?.value;
     const refreshToken = cookieStore.get('spotify_refresh_token')?.value;
 
+    // Check if minimal mode (lightweight polling)
+    const { searchParams } = new URL(req.url);
+    const minimal = searchParams.get('minimal') === 'true';
+
     if (!accessToken && !refreshToken) {
         return NextResponse.json({ is_playing: false, message: 'Not authenticated' }, { status: 401 });
     }
-
-    // Set tokens
     if (accessToken) spotifyApi.setAccessToken(accessToken);
     if (refreshToken) spotifyApi.setRefreshToken(refreshToken);
 
@@ -33,6 +35,23 @@ export async function GET(req: NextRequest) {
         }
 
         const item = currentTrack.body.item as SpotifyApi.TrackObjectFull;
+
+        // ===== MINIMAL MODE: Return only basic track info =====
+        if (minimal) {
+            return NextResponse.json({
+                id: item.id,
+                name: item.name,
+                artist: item.artists[0].name,
+                album: item.album.name,
+                album_id: item.album.id,
+                image: item.album.images[0]?.url,
+                is_playing: currentTrack.body.is_playing,
+                progress_ms: currentTrack.body.progress_ms,
+                duration_ms: item.duration_ms,
+            });
+        }
+
+        // ===== FULL MODE: Fetch all data =====
 
         // Fetch Artist for Genres (Track objects don't have them, Artist objects do)
         const artistData = await spotifyApi.getArtist(item.artists[0].id);
@@ -73,6 +92,31 @@ export async function GET(req: NextRequest) {
         // Check if album is saved
         const isAlbumSaved = await checkIfAlbumSaved(item.album.id);
 
+        // Fetch Artist's Top Tracks (Top 5)
+        const topTracksRes = await spotifyApi.getArtistTopTracks(item.artists[0].id, 'JP');
+        const topTracks = topTracksRes.body.tracks.slice(0, 5).map(t => ({
+            id: t.id,
+            name: t.name,
+            uri: t.uri,
+            album_name: t.album.name,
+            album_image: t.album.images[0]?.url,
+            popularity: t.popularity
+        }));
+
+        // Fetch Artist's Albums (Latest 10)
+        const albumsRes = await spotifyApi.getArtistAlbums(item.artists[0].id, {
+            include_groups: 'album',
+            limit: 10,
+            country: 'JP'
+        });
+        const artistAlbums = albumsRes.body.items.map((a: SpotifyApi.AlbumObjectSimplified) => ({
+            id: a.id,
+            name: a.name,
+            image: a.images[0]?.url,
+            release_date: a.release_date,
+            total_tracks: a.total_tracks
+        }));
+
         const trackData = {
             id: item.id,
             name: item.name,
@@ -85,6 +129,7 @@ export async function GET(req: NextRequest) {
             uri: item.uri,
             url: item.external_urls.spotify,
             album_id: item.album.id, // Added for Save Album
+            release_date: item.album.release_date, // Added for Release Year display
             duration_ms: item.duration_ms,
             progress_ms: currentTrack.body.progress_ms,
             is_playing: currentTrack.body.is_playing,
@@ -93,7 +138,9 @@ export async function GET(req: NextRequest) {
             genre: genres.length > 0 ? genres[0] : 'Unknown',
             album_tracks: albumTracksWithRatings,
             album_score: parseFloat(albumScore.toFixed(1)),
-            is_album_saved: isAlbumSaved
+            is_album_saved: isAlbumSaved,
+            top_tracks: topTracks,
+            artist_albums: artistAlbums
         };
 
         return NextResponse.json(trackData);

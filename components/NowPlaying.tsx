@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { Play, Pause, Plus, SkipBack, SkipForward, ListPlus, CheckCircle2, ChevronRight, User, Disc3, Music, Hash, CalendarDays, Heart } from 'lucide-react';
 
@@ -27,10 +27,18 @@ export default function NowPlaying() {
     const [queuedTracks, setQueuedTracks] = useState<Set<string>>(new Set());
     const [toast, setToast] = useState<string | null>(null);
     const [autoNext, setAutoNext] = useState(true);
+    const [activeTab, setActiveTab] = useState<'album' | 'top' | 'discography' | 'related'>('album');
+    const [relatedArtists, setRelatedArtists] = useState<any[]>([]);
+    const [relatedLoading, setRelatedLoading] = useState(false);
+    const lastArtistRef = useRef<string | null>(null);
+
+    // Track ID to detect song changes
+    const lastTrackIdRef = useRef<string | null>(null);
 
     const showToast = (message: string) => setToast(message);
 
-    const fetchTrack = async () => {
+    // Full data fetch (heavy - called only when track changes)
+    const fetchFullTrackData = async () => {
         try {
             const res = await fetch('/api/player/now-playing');
             if (res.status === 401) {
@@ -40,14 +48,70 @@ export default function NowPlaying() {
             const data = await res.json();
             if (data.is_playing === false) {
                 setTrack(null);
+                lastTrackIdRef.current = null;
             } else {
                 setTrack(data);
                 setRating(data.rating || 0);
+                lastTrackIdRef.current = data.id;
             }
         } catch (e) {
             console.error(e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Minimal poll (lightweight - called every 15 seconds)
+    const pollTrack = async () => {
+        try {
+            const res = await fetch('/api/player/now-playing?minimal=true');
+            if (res.status === 401) {
+                setError('Please login');
+                return;
+            }
+            const data = await res.json();
+
+            if (data.is_playing === false) {
+                setTrack(null);
+                lastTrackIdRef.current = null;
+                return;
+            }
+
+            // Check if track changed
+            if (data.id !== lastTrackIdRef.current) {
+                // Track changed - fetch full data
+                await fetchFullTrackData();
+            } else {
+                // Same track - just update playback state
+                setTrack((prev: any) => prev ? {
+                    ...prev,
+                    is_playing: data.is_playing,
+                    progress_ms: data.progress_ms
+                } : prev);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    // Fetch related artists (only when artist changes or tab selected)
+    const fetchRelatedArtists = async (artistName: string) => {
+        if (lastArtistRef.current === artistName && relatedArtists.length > 0) {
+            return; // Already fetched for this artist
+        }
+
+        setRelatedLoading(true);
+        try {
+            const res = await fetch(`/api/player/related-artists?artist=${encodeURIComponent(artistName)}`);
+            if (res.ok) {
+                const data = await res.json();
+                setRelatedArtists(data.artists || []);
+                lastArtistRef.current = artistName;
+            }
+        } catch (e) {
+            console.error('Failed to fetch related artists', e);
+        } finally {
+            setRelatedLoading(false);
         }
     };
 
@@ -111,18 +175,18 @@ export default function NowPlaying() {
             if (!res.ok) {
                 const data = await res.json();
                 alert(`Playback Error: ${data.error}`);
-                fetchTrack();
+                fetchFullTrackData();
                 return;
             }
 
             if (action === 'next' || action === 'previous') {
-                setTimeout(fetchTrack, 300);
+                setTimeout(fetchFullTrackData, 300);
             } else {
-                setTimeout(fetchTrack, 1000);
+                setTimeout(fetchFullTrackData, 1000);
             }
         } catch (e) {
             console.error("Control failed", e);
-            fetchTrack();
+            fetchFullTrackData();
         } finally {
             setControlLoading(false);
         }
@@ -176,8 +240,8 @@ export default function NowPlaying() {
     };
 
     useEffect(() => {
-        fetchTrack();
-        const interval = setInterval(fetchTrack, 15000);
+        fetchFullTrackData(); // Initial full fetch
+        const interval = setInterval(pollTrack, 15000); // Lightweight polling
         return () => clearInterval(interval);
     }, []);
 
@@ -240,16 +304,23 @@ export default function NowPlaying() {
                     >
                         {track.artist}
                     </a>
-                    {/* Album row with heart icon */}
+                    {/* Album row with release year and heart icon */}
                     <div className="flex items-center space-x-2">
-                        <a
-                            href={track.album_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-gray-500 hover:text-pink-400 transition truncate"
-                        >
-                            {track.album}
-                        </a>
+                        <div className="flex items-center truncate">
+                            <a
+                                href={track.album_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-gray-500 hover:text-pink-400 transition truncate"
+                            >
+                                {track.album}
+                            </a>
+                            {track.release_date && (
+                                <span className="text-xs text-gray-600 ml-1 shrink-0">
+                                    • {track.release_date}
+                                </span>
+                            )}
+                        </div>
                         <button
                             onClick={handleSaveAlbum}
                             disabled={track.is_album_saved}
@@ -363,10 +434,53 @@ export default function NowPlaying() {
                 </div>
             </div>
 
-            {/* ===== ALBUM TRACKS SECTION ===== */}
-            {track.album_tracks && track.album_tracks.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-700/50">
-                    <h4 className="text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">Album Tracks</h4>
+            {/* ===== TAB SECTION: Album Tracks / Top Hits / Discography ===== */}
+            <div className="mt-4 pt-4 border-t border-gray-700/50">
+                {/* Tab Headers */}
+                <div className="flex space-x-1 mb-3">
+                    <button
+                        onClick={() => setActiveTab('album')}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${activeTab === 'album'
+                            ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50'
+                            : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                            }`}
+                    >
+                        This Album
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('top')}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${activeTab === 'top'
+                            ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50'
+                            : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                            }`}
+                    >
+                        Top Hits
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('discography')}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${activeTab === 'discography'
+                            ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50'
+                            : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                            }`}
+                    >
+                        Discography
+                    </button>
+                    <button
+                        onClick={() => {
+                            setActiveTab('related');
+                            if (track?.artist) fetchRelatedArtists(track.artist);
+                        }}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${activeTab === 'related'
+                            ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50'
+                            : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                            }`}
+                    >
+                        Related
+                    </button>
+                </div>
+
+                {/* Tab Content */}
+                {activeTab === 'album' && track.album_tracks && track.album_tracks.length > 0 && (
                     <div className="space-y-1 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
                         {track.album_tracks.map((t: any, index: number) => (
                             <div key={t.id} className={`flex items-center justify-between p-2 rounded-lg transition ${t.id === track.id ? 'bg-pink-500/10 border border-pink-500/20' : 'hover:bg-gray-800/50'}`}>
@@ -400,8 +514,80 @@ export default function NowPlaying() {
                             </div>
                         ))}
                     </div>
-                </div>
-            )}
+                )}
+
+                {activeTab === 'top' && track.top_tracks && track.top_tracks.length > 0 && (
+                    <div className="space-y-1 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                        {track.top_tracks.map((t: any, index: number) => (
+                            <div key={t.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800/50 transition">
+                                <div className="flex items-center space-x-2 truncate mr-2">
+                                    <span className="text-xs text-gray-500 font-mono w-4">{index + 1}</span>
+                                    <div className="flex flex-col truncate">
+                                        <span className="text-sm text-gray-300 truncate">{t.name}</span>
+                                        <span className="text-[10px] text-gray-500 truncate">{t.album_name}</span>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleAddToQueue(t.uri)}
+                                    className={`p-1 transition shrink-0 ${queuedTracks.has(t.uri)
+                                        ? 'text-pink-400'
+                                        : 'text-gray-500 hover:text-pink-400'
+                                        }`}
+                                    title={queuedTracks.has(t.uri) ? 'Added!' : 'Add to Queue'}
+                                    disabled={queuedTracks.has(t.uri)}
+                                >
+                                    {queuedTracks.has(t.uri) ? <CheckCircle2 size={14} /> : <ListPlus size={14} />}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {activeTab === 'discography' && track.artist_albums && track.artist_albums.length > 0 && (
+                    <div className="flex space-x-3 overflow-x-auto pb-2 custom-scrollbar">
+                        {track.artist_albums.map((a: any) => (
+                            <div key={a.id} className="flex-shrink-0 w-20 group">
+                                <div className="relative w-20 h-20 rounded-lg overflow-hidden mb-1 border border-gray-700/50">
+                                    {a.image && (
+                                        <img
+                                            src={a.image}
+                                            alt={a.name}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition"
+                                        />
+                                    )}
+                                    {a.id === track.album_id && (
+                                        <div className="absolute inset-0 bg-pink-500/30 flex items-center justify-center">
+                                            <span className="text-white text-xs font-bold">NOW</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-gray-400 truncate" title={a.name}>{a.name}</p>
+                                <p className="text-[9px] text-gray-600">{a.release_date?.split('-')[0]}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {activeTab === 'related' && (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                        {relatedLoading ? (
+                            <div className="flex items-center justify-center py-4">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-400"></div>
+                                <span className="ml-2 text-sm text-gray-400">AIが分析中...</span>
+                            </div>
+                        ) : relatedArtists.length > 0 ? (
+                            relatedArtists.map((artist: any, index: number) => (
+                                <div key={index} className="p-2 rounded-lg bg-gray-800/30 border border-gray-700/50">
+                                    <p className="text-sm font-medium text-white">{artist.name}</p>
+                                    <p className="text-xs text-gray-400 mt-0.5">{artist.reason}</p>
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-sm text-gray-500 text-center py-4">タブをクリックして関連アーティストを取得</p>
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

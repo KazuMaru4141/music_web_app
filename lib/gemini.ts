@@ -169,3 +169,47 @@ export async function generateRecommendations(params: RecommendationParams): Pro
 
     return artists;
 }
+
+// Related Artists Interface
+export interface RelatedArtist {
+    name: string;
+    reason: string;
+}
+
+// Get Related Artists using Gemini
+export async function getRelatedArtists(artistName: string): Promise<RelatedArtist[]> {
+    const prompt = `
+あなたは音楽の専門家です。
+「${artistName}」に音楽的に似ているアーティストを5組挙げてください。
+
+各アーティストについて、以下のJSON形式で出力してください。
+説明以外の出力は不要です。
+[
+    {
+        "name": "アーティスト名",
+        "reason": "類似している理由（日本語、1文で簡潔に）"
+    }
+]
+
+注意:
+- 音楽スタイル、時代、ジャンル、影響関係などを考慮してください
+- メジャーなアーティストだけでなく、隠れた名アーティストも含めてください
+- 同じレーベル、同じシーン、同じプロデューサーなどの関連性も考慮
+`;
+
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+
+    console.log("Gemini Related Artists Response:", responseText);
+
+    // Clean Code Blocks
+    const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    try {
+        const artists: RelatedArtist[] = JSON.parse(cleanJson);
+        return artists.slice(0, 5); // Ensure max 5 artists
+    } catch (e) {
+        console.error("JSON Parse Error for Related Artists", e);
+        throw new Error("Failed to parse AI response for related artists");
+    }
+}
