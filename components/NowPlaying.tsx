@@ -205,8 +205,9 @@ export default function NowPlaying() {
                 throw new Error(err.error || 'Failed to save');
             }
             const data = await res.json();
-            setTrack((prev: any) => prev ? { ...prev, is_album_saved: true } : prev);
-            showToast(data.status === 'updated' ? 'Album Updated!' : 'Album Saved!');
+            // Toggle the state based on response
+            setTrack((prev: any) => prev ? { ...prev, is_album_saved: data.is_featured } : prev);
+            showToast(data.is_featured ? 'Album Saved!' : 'Album Removed');
         } catch (e: any) {
             console.error("Failed to save album", e);
             alert(`Error: ${e.message}`);
@@ -323,12 +324,11 @@ export default function NowPlaying() {
                         </div>
                         <button
                             onClick={handleSaveAlbum}
-                            disabled={track.is_album_saved}
                             className={`shrink-0 p-1.5 -m-1 transition ${track.is_album_saved
-                                ? 'text-pink-500 cursor-default'
+                                ? 'text-pink-500 hover:text-pink-300 hover:scale-110'
                                 : 'text-gray-500 hover:text-pink-400 hover:scale-110'
                                 }`}
-                            title={track.is_album_saved ? 'In Library' : 'Add to Library'}
+                            title={track.is_album_saved ? 'Remove from Library' : 'Add to Library'}
                         >
                             <Heart size={18} fill={track.is_album_saved ? 'currentColor' : 'none'} />
                         </button>
