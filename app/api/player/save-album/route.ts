@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { saveAlbum } from '@/lib/google-sheets';
+import { saveAlbum } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
     try {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
         const albumData = await spotifyApi.getAlbum(albumId);
         const result = await saveAlbum(albumData.body);
 
-        return NextResponse.json({ success: true, status: result.status });
+        return NextResponse.json({ success: true, status: result.status, is_featured: result.is_featured });
 
     } catch (error) {
         console.error("Save Album API Error:", error);

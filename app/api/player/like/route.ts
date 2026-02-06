@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import spotifyApi from '@/lib/spotify';
-import { saveLikedSong } from '@/lib/google-sheets';
+import { saveLikedSong } from '@/lib/supabase';
 import { cookies } from 'next/headers';
 
 const PLAYLIST_ID = process.env.SPOTIFY_LIKED_PLAYLIST_ID!;
@@ -27,8 +27,20 @@ export async function POST(req: NextRequest) {
             spotifyApi.setAccessToken(data.body.access_token);
         }
 
-        // 1. Save to Google Sheet
-        const sheetResult = await saveLikedSong(track, rating);
+        // Fetch album tracks to save all songs from the album
+        let albumTracks: any[] = [];
+        const albumId = track.album_id || track.album?.id;
+        if (albumId) {
+            try {
+                const albumRes = await spotifyApi.getAlbumTracks(albumId);
+                albumTracks = albumRes.body.items;
+            } catch (e) {
+                console.error('Failed to fetch album tracks:', e);
+            }
+        }
+
+        // 1. Save to Supabase (with album tracks)
+        const sheetResult = await saveLikedSong(track, rating, albumTracks);
 
         // 2. Add to Spotify Playlist (Only if specifically added, i.e., new or user requested)
         // The Python logic adds to playlist only if it's a NEW entry in the sheet.

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import spotifyApi, { SpotifyTrack } from '@/lib/spotify';
 import { getUserPlayCounts } from '@/lib/lastfm';
-import { getTrackRating, getAlbumTrackRatings, checkIfAlbumSaved } from '@/lib/google-sheets';
+import { getTrackRating, getAlbumTrackRatings, checkIfAlbumSaved } from '@/lib/supabase';
 import { cookies } from 'next/headers';
 
 export async function GET(req: NextRequest) {
@@ -64,12 +64,13 @@ export async function GET(req: NextRequest) {
             item.name
         );
 
-        const rating = await getTrackRating(item);
-
-        // Fetch Album Tracks
+        // Fetch Album Tracks first (needed for AutoSave)
         const albumRes = await spotifyApi.getAlbumTracks(item.album.id);
         const albumTracks = albumRes.body.items;
         const albumTrackIds = albumTracks.map(t => t.id);
+
+        // Get track rating (pass albumTracks for AutoSave)
+        const rating = await getTrackRating(item, albumTracks);
 
         // Fetch Ratings for all tracks in album
         const albumRatings = await getAlbumTrackRatings(albumTrackIds);
