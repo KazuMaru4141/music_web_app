@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
             }),
             getAlbumTrackRatings(albumTrackIds).catch(e => {
                 console.error('Failed to get album ratings:', e);
-                return {}; // Default to empty object
+                return {} as Record<string, number>; // Default to empty object
             })
         ]);
 
