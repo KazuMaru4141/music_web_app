@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import spotifyApi, { SpotifyTrack } from '@/lib/spotify';
+import spotifyApi from '@/lib/spotify';
 import { getUserPlayCounts } from '@/lib/lastfm';
 import { getTrackRating, getAlbumTrackRatings, checkIfAlbumSaved } from '@/lib/supabase';
 import { cookies } from 'next/headers';
@@ -9,7 +9,6 @@ export async function GET(req: NextRequest) {
     const accessToken = cookieStore.get('spotify_access_token')?.value;
     const refreshToken = cookieStore.get('spotify_refresh_token')?.value;
 
-    // Check if minimal mode (lightweight polling)
     const { searchParams } = new URL(req.url);
     const minimal = searchParams.get('minimal') === 'true';
 
@@ -20,12 +19,9 @@ export async function GET(req: NextRequest) {
     if (refreshToken) spotifyApi.setRefreshToken(refreshToken);
 
     try {
-        // Refresh token if needed (simplistic check, ideally handled via middleware or interceptor)
         if (!accessToken && refreshToken) {
             const data = await spotifyApi.refreshAccessToken();
             spotifyApi.setAccessToken(data.body.access_token);
-            // Note: We should ideally update the cookie here too, but Next.js Route Handlers
-            // require setting cookies on the Response object explicitly.
         }
 
         const currentTrack = await spotifyApi.getMyCurrentPlayingTrack();
@@ -36,7 +32,6 @@ export async function GET(req: NextRequest) {
 
         const item = currentTrack.body.item as SpotifyApi.TrackObjectFull;
 
-        // ===== MINIMAL MODE: Return only basic track info =====
         if (minimal) {
             return NextResponse.json({
                 id: item.id,
@@ -51,29 +46,55 @@ export async function GET(req: NextRequest) {
             });
         }
 
-        // ===== FULL MODE: Fetch all data =====
+        // --- 並列処理 ---
 
-        // Fetch Artist for Genres (Track objects don't have them, Artist objects do)
-        const artistData = await spotifyApi.getArtist(item.artists[0].id);
-        const genres = artistData.body.genres;
+        // 1. 依存関係のないリクエストを定義
+        const artistPromise = spotifyApi.getArtist(item.artists[0].id)
+            .catch(e => { console.error('Spotify Artist Error', e); return null; });
 
-        // Fetch Last.fm stats
-        const stats = await getUserPlayCounts(
-            item.artists[0].name,
-            item.album.name,
-            item.name
-        );
+        const lastFmPromise = getUserPlayCounts(item.artists[0].name, item.album.name, item.name)
+            .catch(e => { console.error('LastFM Error', e); return null; });
 
-        // Fetch Album Tracks first (needed for AutoSave)
-        const albumRes = await spotifyApi.getAlbumTracks(item.album.id);
-        const albumTracks = albumRes.body.items;
+        const albumTracksPromise = spotifyApi.getAlbumTracks(item.album.id)
+            .catch(e => { console.error('Spotify Album Tracks Error', e); return null; });
+
+        const isAlbumSavedPromise = checkIfAlbumSaved(item.album.id)
+            .catch(e => { console.error('DB Saved Check Error', e); return false; });
+
+        const topTracksPromise = spotifyApi.getArtistTopTracks(item.artists[0].id, 'JP')
+            .catch(e => { console.error('Spotify Top Tracks Error', e); return null; });
+
+        const artistAlbumsPromise = spotifyApi.getArtistAlbums(item.artists[0].id, { include_groups: 'album', limit: 10, country: 'JP' })
+            .catch(e => { console.error('Spotify Artist Albums Error', e); return null; });
+
+        // 2. 一斉にスタート！
+        const [
+            artistData,
+            stats,
+            albumRes,
+            isAlbumSaved,
+            topTracksRes,
+            albumsRes
+        ] = await Promise.all([
+            artistPromise,
+            lastFmPromise,
+            albumTracksPromise,
+            isAlbumSavedPromise,
+            topTracksPromise,
+            artistAlbumsPromise
+        ]);
+
+        // 3. 取得したデータを使って計算
+        const genres = artistData?.body?.genres || [];
+
+        const albumTracks = albumRes?.body?.items || [];
         const albumTrackIds = albumTracks.map(t => t.id);
 
-        // Get track rating (pass albumTracks for AutoSave)
-        const rating = await getTrackRating(item, albumTracks);
-
-        // Fetch Ratings for all tracks in album
-        const albumRatings = await getAlbumTrackRatings(albumTrackIds);
+        // レーティング取得（Supabaseへのアクセスをまとめる）
+        const [rating, albumRatings] = await Promise.all([
+            getTrackRating(item, albumTracks),
+            getAlbumTrackRatings(albumTrackIds)
+        ]);
 
         const albumTracksWithRatings = albumTracks.map(t => ({
             id: t.id,
@@ -82,7 +103,7 @@ export async function GET(req: NextRequest) {
             rating: albumRatings[t.id] || 0
         }));
 
-        // Calculate Album Score (Streamlit Logic)
+        // スコア計算
         const trackPoints: Record<number, number> = { 1: 0, 2: 10, 3: 60, 4: 80, 5: 100 };
         let totalPoints = 0;
         albumTracksWithRatings.forEach(t => {
@@ -90,33 +111,23 @@ export async function GET(req: NextRequest) {
         });
         const albumScore = albumTracks.length > 0 ? (totalPoints / albumTracks.length) : 0;
 
-        // Check if album is saved
-        const isAlbumSaved = await checkIfAlbumSaved(item.album.id);
-
-        // Fetch Artist's Top Tracks (Top 5)
-        const topTracksRes = await spotifyApi.getArtistTopTracks(item.artists[0].id, 'JP');
-        const topTracks = topTracksRes.body.tracks.slice(0, 5).map(t => ({
+        // 整形
+        const topTracks = topTracksRes?.body?.tracks.slice(0, 5).map(t => ({
             id: t.id,
             name: t.name,
             uri: t.uri,
             album_name: t.album.name,
             album_image: t.album.images[0]?.url,
             popularity: t.popularity
-        }));
+        })) || [];
 
-        // Fetch Artist's Albums (Latest 10)
-        const albumsRes = await spotifyApi.getArtistAlbums(item.artists[0].id, {
-            include_groups: 'album',
-            limit: 10,
-            country: 'JP'
-        });
-        const artistAlbums = albumsRes.body.items.map((a: SpotifyApi.AlbumObjectSimplified) => ({
+        const artistAlbums = albumsRes?.body?.items.map((a: SpotifyApi.AlbumObjectSimplified) => ({
             id: a.id,
             name: a.name,
             image: a.images[0]?.url,
             release_date: a.release_date,
             total_tracks: a.total_tracks
-        }));
+        })) || [];
 
         const trackData = {
             id: item.id,
@@ -129,8 +140,8 @@ export async function GET(req: NextRequest) {
             image: item.album.images[0]?.url,
             uri: item.uri,
             url: item.external_urls.spotify,
-            album_id: item.album.id, // Added for Save Album
-            release_date: item.album.release_date, // Added for Release Year display
+            album_id: item.album.id,
+            release_date: item.album.release_date,
             duration_ms: item.duration_ms,
             progress_ms: currentTrack.body.progress_ms,
             is_playing: currentTrack.body.is_playing,
