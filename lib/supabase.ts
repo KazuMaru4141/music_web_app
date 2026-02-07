@@ -42,8 +42,17 @@ export async function saveLikedSong(track: any, rating: number, albumTracks?: an
 
         return { status: 'updated' };
     } else {
-        // Insert new song
+        // NEW SONG CASE
+
+        // 1. First, ensure Album (and Artist) exists to satisfy Foreign Key constraints
         const albumName = albumData?.name || track.album;
+        if (albumData && albumData.id) {
+            await saveAlbumFromTrack(albumData, track);
+        } else if (albumId) {
+            await saveMinimalAlbum(albumId, albumName, track);
+        }
+
+        // 2. Insert new song
         const spotifyUrl = track.url || track.external_urls?.spotify || '';
 
         const { error } = await supabase
@@ -60,19 +69,12 @@ export async function saveLikedSong(track: any, rating: number, albumTracks?: an
 
         if (error) throw error;
 
-        // Also save album info if available
-        if (albumData && albumData.id) {
-            await saveAlbumFromTrack(albumData, track);
-        } else if (albumId) {
-            await saveMinimalAlbum(albumId, albumName, track);
-        }
-
-        // Save all album tracks if provided
+        // 3. Save all other album tracks if provided
         if (albumTracks && albumTracks.length > 0 && albumId) {
             await saveAlbumTracks(albumTracks, albumId);
         }
 
-        // Update album score
+        // 4. Update album score
         if (albumId) {
             await updateAlbumScore(albumId);
         }

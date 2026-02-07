@@ -91,16 +91,29 @@ export async function GET(req: NextRequest) {
         const albumTrackIds = albumTracks.map(t => t.id);
 
         // レーティング取得（Supabaseへのアクセスをまとめる）
+        // エラーが発生しても再生画面は表示できるようにする
         const [rating, albumRatings] = await Promise.all([
-            getTrackRating(item, albumTracks),
-            getAlbumTrackRatings(albumTrackIds)
+            getTrackRating(item, albumTracks).catch(e => {
+                console.error('Failed to get/save track rating:', e);
+                return 3; // Default to 3 if failed (New default)
+            }),
+            getAlbumTrackRatings(albumTrackIds).catch(e => {
+                console.error('Failed to get album ratings:', e);
+                return {}; // Default to empty object
+            })
         ]);
+
+        // Force update the current track's rating in the album list to match the authoritative rating
+        // This fixes the race condition where getAlbumTrackRatings might return 0 before getTrackRating auto-saves 3
+        if (item.id) {
+            albumRatings[item.id] = rating;
+        }
 
         const albumTracksWithRatings = albumTracks.map(t => ({
             id: t.id,
             name: t.name,
             uri: t.uri,
-            rating: albumRatings[t.id] || 0
+            rating: (albumRatings as Record<string, number>)[t.id] || 0
         }));
 
         // スコア計算
