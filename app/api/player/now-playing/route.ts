@@ -146,6 +146,7 @@ export async function GET(req: NextRequest) {
             id: item.id,
             name: item.name,
             artist: item.artists[0].name,
+            artist_id: item.artists[0].id,
             artist_url: item.artists[0].external_urls.spotify,
             album: item.album.name,
             album_url: item.album.external_urls.spotify,

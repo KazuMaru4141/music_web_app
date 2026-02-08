@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Play, Pause, Plus, SkipBack, SkipForward, ListPlus, CheckCircle2, ChevronRight, User, Disc3, Music, Hash, CalendarDays, Heart } from 'lucide-react';
 
 // Toast notification component
@@ -95,18 +96,23 @@ export default function NowPlaying() {
     };
 
     // Fetch related artists (only when artist changes or tab selected)
-    const fetchRelatedArtists = async (artistName: string) => {
+    const fetchRelatedArtists = async (artistName: string, artistId?: string) => {
         if (lastArtistRef.current === artistName && relatedArtists.length > 0) {
             return; // Already fetched for this artist
         }
 
         setRelatedLoading(true);
         try {
-            const res = await fetch(`/api/player/related-artists?artist=${encodeURIComponent(artistName)}`);
+            let url = `/api/player/related-artists?artist=${encodeURIComponent(artistName)}`;
+            if (artistId) {
+                url += `&artist_id=${encodeURIComponent(artistId)}`;
+            }
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 setRelatedArtists(data.artists || []);
                 lastArtistRef.current = artistName;
+                console.log(`Related artists loaded from: ${data.source}`);
             }
         } catch (e) {
             console.error('Failed to fetch related artists', e);
@@ -297,14 +303,12 @@ export default function NowPlaying() {
                     <h2 className="text-lg md:text-xl font-bold text-white truncate">
                         {track.name}
                     </h2>
-                    <a
-                        href={track.artist_url}
-                        target="_blank"
-                        rel="noreferrer"
+                    <Link
+                        href={`/artists/${track.artist_id}`}
                         className="text-sm md:text-base text-gray-300 hover:text-pink-400 transition truncate block"
                     >
                         {track.artist}
-                    </a>
+                    </Link>
                     {/* Album row with release year and heart icon */}
                     <div className="flex items-center space-x-2">
                         <div className="flex items-center truncate">
@@ -468,7 +472,7 @@ export default function NowPlaying() {
                     <button
                         onClick={() => {
                             setActiveTab('related');
-                            if (track?.artist) fetchRelatedArtists(track.artist);
+                            if (track?.artist) fetchRelatedArtists(track.artist, track.artist_id);
                         }}
                         className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${activeTab === 'related'
                             ? 'bg-pink-500/20 text-pink-400 border border-pink-500/50'
