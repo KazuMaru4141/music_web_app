@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Play, Pause, Plus, SkipBack, SkipForward, ListPlus, CheckCircle2, ChevronRight, User, Disc3, Music, Hash, CalendarDays, Heart } from 'lucide-react';
+import { Play, Pause, Plus, SkipBack, SkipForward, ListPlus, CheckCircle2, ChevronRight, User, Disc3, Music, Hash, CalendarDays, Heart, ExternalLink, RefreshCw } from 'lucide-react';
 
 // Toast notification component
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -31,6 +31,7 @@ export default function NowPlaying() {
     const [activeTab, setActiveTab] = useState<'album' | 'top' | 'discography' | 'related'>('album');
     const [relatedArtists, setRelatedArtists] = useState<any[]>([]);
     const [relatedLoading, setRelatedLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const lastArtistRef = useRef<string | null>(null);
 
     // Track ID to detect song changes
@@ -96,21 +97,35 @@ export default function NowPlaying() {
     };
 
     // Fetch related artists (only when artist changes or tab selected)
-    const fetchRelatedArtists = async (artistName: string, artistId?: string) => {
-        if (lastArtistRef.current === artistName && relatedArtists.length > 0) {
-            return; // Already fetched for this artist
+    const fetchRelatedArtists = async (artistName: string, artistId?: string, refresh: boolean = false) => {
+        // refreshでない場合のみキャッシュチェック
+        if (!refresh && lastArtistRef.current === artistName && relatedArtists.length > 0) {
+            return;
         }
 
-        setRelatedLoading(true);
+        if (refresh) setIsRefreshing(true);
+        else setRelatedLoading(true);
+
         try {
             let url = `/api/player/related-artists?artist=${encodeURIComponent(artistName)}`;
             if (artistId) {
                 url += `&artist_id=${encodeURIComponent(artistId)}`;
             }
+            if (refresh) {
+                url += `&refresh=true`;
+            }
+
             const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
-                setRelatedArtists(data.artists || []);
+                if (data.artists && data.artists.length > 0) {
+                    setRelatedArtists(data.artists);
+                    if (refresh) {
+                        showToast('Found new artists!');
+                    }
+                } else if (refresh) {
+                    showToast('No new artists found.');
+                }
                 lastArtistRef.current = artistName;
                 console.log(`Related artists loaded from: ${data.source}`);
             }
@@ -118,6 +133,7 @@ export default function NowPlaying() {
             console.error('Failed to fetch related artists', e);
         } finally {
             setRelatedLoading(false);
+            setIsRefreshing(false);
         }
     };
 
@@ -574,61 +590,93 @@ export default function NowPlaying() {
 
                 {/* ★ リッチなカードUIとリンク連携 ★ */}
                 {activeTab === 'related' && (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                        {relatedLoading ? (
-                            <div className="flex items-center justify-center py-4">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-400"></div>
-                                <span className="ml-2 text-sm text-gray-400">AIが分析中...</span>
-                            </div>
-                        ) : relatedArtists.length > 0 ? (
-                            relatedArtists.map((artist: any, index: number) => (
-                                <div key={index} className="group flex items-start space-x-3 p-2 rounded-lg bg-gray-800/30 border border-gray-700/50 hover:bg-gray-800 transition">
-                                    {/* Artist Image (Circle) */}
-                                    <div className="relative w-10 h-10 flex-shrink-0 rounded-full overflow-hidden bg-gray-700 border border-gray-600">
-                                        {artist.image ? (
-                                            <Image src={artist.image} alt={artist.name} fill className="object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-500">
-                                                <User size={16} />
-                                            </div>
-                                        )}
-                                    </div>
+                    <div className="flex flex-col h-full max-h-48">
+                        {/* ヘッダーエリア: タイトルと更新ボタン */}
+                        <div className="flex items-center justify-between mb-2 px-1">
+                            <span className="text-xs font-semibold text-gray-400">Recommended</span>
+                            <button
+                                onClick={() => track?.artist && fetchRelatedArtists(track.artist, track.artist_id, true)}
+                                disabled={isRefreshing || relatedLoading}
+                                className="flex items-center space-x-1 text-[10px] bg-gray-800 hover:bg-gray-700 text-pink-400 px-2 py-1 rounded-full transition disabled:opacity-50"
+                            >
+                                <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
+                                <span>Dig Deeper</span>
+                            </button>
+                        </div>
 
-                                    {/* Info & Link */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between">
-                                            {artist.id ? (
-                                                <Link
-                                                    href={`/artists/${artist.id}`}
-                                                    className="text-sm font-medium text-white hover:text-pink-400 transition truncate block flex-1"
-                                                >
-                                                    {artist.name}
-                                                </Link>
+                        <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar flex-1">
+                            {relatedLoading ? (
+                                <div className="flex items-center justify-center py-4">
+                                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-400"></div>
+                                    <span className="ml-2 text-sm text-gray-400">AIが分析中...</span>
+                                </div>
+                            ) : relatedArtists.length > 0 ? (
+                                relatedArtists.map((artist: any, index: number) => (
+                                    <div key={index} className="group flex items-start space-x-3 p-2 rounded-lg bg-gray-800/30 border border-gray-700/50 hover:bg-gray-800 transition relative">
+                                        {/* Artist Image (Circle) */}
+                                        <div className="relative w-10 h-10 flex-shrink-0 rounded-full overflow-hidden bg-gray-700 border border-gray-600">
+                                            {artist.image ? (
+                                                <Image src={artist.image} alt={artist.name} fill className="object-cover" />
                                             ) : (
-                                                <p className="text-sm font-medium text-white truncate">{artist.name}</p>
+                                                <div className="w-full h-full flex items-center justify-center text-gray-500">
+                                                    <User size={16} />
+                                                </div>
                                             )}
                                         </div>
-                                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-tight">
-                                            {artist.reason}
-                                        </p>
-                                    </div>
 
-                                    {/* Chevron / Action Icon (if ID exists) */}
-                                    {artist.id && (
-                                        <Link
-                                            href={`/artists/${artist.id}`}
-                                            className="text-gray-600 group-hover:text-pink-400 transition self-center"
-                                        >
-                                            <ChevronRight size={16} />
-                                        </Link>
-                                    )}
+                                        {/* Info & Link */}
+                                        <div className="flex-1 min-w-0 pr-6">
+                                            <div className="flex items-center">
+                                                {artist.id ? (
+                                                    <Link
+                                                        href={`/artists/${artist.id}`}
+                                                        className="text-sm font-medium text-white hover:text-pink-400 transition truncate block"
+                                                    >
+                                                        {artist.name}
+                                                    </Link>
+                                                ) : (
+                                                    <p className="text-sm font-medium text-white truncate">{artist.name}</p>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-tight">
+                                                {artist.reason}
+                                            </p>
+                                        </div>
+
+                                        {/* Actions Area (Right side) */}
+                                        <div className="absolute top-2 right-2 flex flex-col items-end space-y-1">
+                                            {/* Spotify Link */}
+                                            {artist.url && (
+                                                <a
+                                                    href={artist.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-gray-600 hover:text-[#1DB954] transition p-0.5"
+                                                    title="Open in Spotify"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <ExternalLink size={14} />
+                                                </a>
+                                            )}
+
+                                            {/* Detail Chevron */}
+                                            {artist.id && (
+                                                <Link
+                                                    href={`/artists/${artist.id}`}
+                                                    className="text-gray-600 group-hover:text-pink-400 transition p-0.5"
+                                                >
+                                                    <ChevronRight size={14} />
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-center py-4">
+                                    <p className="text-sm text-gray-500">関連アーティストが見つかりません</p>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="text-center py-4">
-                                <p className="text-sm text-gray-500">関連アーティストが見つかりません</p>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

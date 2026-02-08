@@ -21,20 +21,20 @@ export async function saveRelatedArtists(
     const savedArtists = []
 
     for (const rec of recommendations) {
-        // 1. まずDBに存在するか確認（名前で検索）
+        // 1. まずDBに存在するか確認（名前で検索）- image_urlもチェック
         const { data: existing } = await supabase
             .from('artists')
-            .select('id')
+            .select('id, image_url')
             .eq('name', rec.name)
             .single()
 
         let targetId = existing?.id
+        const needsImageUpdate = existing && !existing.image_url
 
-        // 2. DBになければ、Spotifyで検索してIDを取得する
-        if (!targetId) {
+        // 2. DBになければ、またはimage_urlがなければ、Spotifyで検索
+        if (!targetId || needsImageUpdate) {
             try {
                 // Spotify APIで検索 (1件だけ取得)
-                // ※呼び出し元でアクセストークンがセットされている前提
                 const searchRes = await spotifyApi.searchArtists(rec.name, { limit: 1 })
                 const hit = searchRes.body.artists?.items[0]
 
@@ -56,11 +56,14 @@ export async function saveRelatedArtists(
 
                     if (!error && newArtist) {
                         targetId = newArtist.id
+                        if (needsImageUpdate) {
+                            console.log(`Updated image for existing artist: ${rec.name}`)
+                        }
                     } else {
                         console.error(`Error upserting artist ${rec.name}:`, error)
                     }
-                } else {
-                    // Spotifyでも見つからない場合（レアケース）
+                } else if (!targetId) {
+                    // Spotifyでも見つからない場合（レアケース）- 新規のみ
                     console.warn(`Not found in Spotify: ${rec.name}. Using UUID.`)
                     const newId = crypto.randomUUID()
                     const { data: newArtist, error } = await supabase
