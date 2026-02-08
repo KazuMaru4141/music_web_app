@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { fetchAndSaveRelatedArtists } from '@/lib/artist-service'
+import { saveRelatedArtists, ArtistRecommendation } from '@/lib/artist-service'
+import { getRelatedArtists } from '@/lib/gemini'
+import spotifyApi from '@/lib/spotify'
+import { cookies } from 'next/headers'
 
 export async function POST(req: NextRequest) {
     try {
@@ -8,6 +11,13 @@ export async function POST(req: NextRequest) {
 
         if (!source_artist_id) {
             return NextResponse.json({ error: 'source_artist_id is required' }, { status: 400 })
+        }
+
+        // Spotify認証トークンをセット
+        const cookieStore = await cookies()
+        const accessToken = cookieStore.get('spotify_access_token')?.value
+        if (accessToken) {
+            spotifyApi.setAccessToken(accessToken)
         }
 
         // 1. ソースとなるアーティストの名前を取得
@@ -21,8 +31,17 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Source artist not found' }, { status: 404 })
         }
 
-        // 2. Geminiロジックの実行 (名前とIDを渡す)
-        const savedArtists = await fetchAndSaveRelatedArtists(sourceArtist.name, source_artist_id, supabase)
+        // 2. Geminiから関連アーティストを取得
+        const geminiArtists = await getRelatedArtists(sourceArtist.name)
+
+        // 3. 共通保存関数を使用
+        const recommendations: ArtistRecommendation[] = geminiArtists.map(a => ({
+            name: a.name,
+            reason: a.reason,
+            genres: []
+        }))
+
+        const savedArtists = await saveRelatedArtists(source_artist_id, recommendations, supabase)
 
         return NextResponse.json({
             success: true,
