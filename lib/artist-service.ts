@@ -1,10 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import spotifyApi from '@/lib/spotify' // Spotify APIを追加
 
-// Gemini APIの初期化
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!)
-
-// 共通のインターフェース（exportして他でも使えるように）
+// Geminiからの返り値の型定義
 export interface ArtistRecommendation {
     name: string
     reason: string
@@ -13,7 +10,7 @@ export interface ArtistRecommendation {
 
 /**
  * 関連アーティストをDBに保存する共通関数
- * Geminiの結果やその他のソースから渡されたリストを保存
+ * Spotify IDを優先して使用します
  */
 export async function saveRelatedArtists(
     sourceArtistId: string,
@@ -24,7 +21,7 @@ export async function saveRelatedArtists(
     const savedArtists = []
 
     for (const rec of recommendations) {
-        // 1. アーティストの存在確認（名前で検索）
+        // 1. まずDBに存在するか確認（名前で検索）
         const { data: existing } = await supabase
             .from('artists')
             .select('id')
@@ -33,30 +30,63 @@ export async function saveRelatedArtists(
 
         let targetId = existing?.id
 
+        // 2. DBになければ、Spotifyで検索してIDを取得する
         if (!targetId) {
-            // 2. 新規作成（IDを明示的に生成）
-            const newId = crypto.randomUUID()
-            const { data: newArtist, error } = await supabase
-                .from('artists')
-                .insert({
-                    id: newId,
-                    name: rec.name,
-                    genres: rec.genres || [],
-                })
-                .select('id')
-                .single()
+            try {
+                // Spotify APIで検索 (1件だけ取得)
+                // ※呼び出し元でアクセストークンがセットされている前提
+                const searchRes = await spotifyApi.searchArtists(rec.name, { limit: 1 })
+                const hit = searchRes.body.artists?.items[0]
 
-            if (error) {
-                console.error(`Error saving artist ${rec.name}:`, error)
-                continue
+                if (hit) {
+                    // ★ここが重要: UUIDではなくSpotify IDをそのまま `id` に使う
+                    console.log(`Found in Spotify: ${rec.name} -> ${hit.id}`)
+
+                    const { data: newArtist, error } = await supabase
+                        .from('artists')
+                        .upsert({
+                            id: hit.id, // Spotify IDを主キーにする
+                            name: hit.name,
+                            url: hit.external_urls.spotify,
+                            image_url: hit.images[0]?.url, // 画像も自動で保存！
+                            genres: hit.genres || rec.genres || [],
+                        })
+                        .select('id')
+                        .single()
+
+                    if (!error && newArtist) {
+                        targetId = newArtist.id
+                    } else {
+                        console.error(`Error upserting artist ${rec.name}:`, error)
+                    }
+                } else {
+                    // Spotifyでも見つからない場合（レアケース）
+                    console.warn(`Not found in Spotify: ${rec.name}. Using UUID.`)
+                    const newId = crypto.randomUUID()
+                    const { data: newArtist, error } = await supabase
+                        .from('artists')
+                        .insert({
+                            id: newId,
+                            name: rec.name,
+                            genres: rec.genres || [],
+                        })
+                        .select('id')
+                        .single()
+
+                    if (!error && newArtist) targetId = newArtist.id
+                }
+            } catch (e) {
+                console.error(`Spotify search failed for ${rec.name}:`, e)
             }
-            targetId = newArtist.id
         }
 
-        savedArtists.push({ ...rec, id: targetId })
+        // 3. IDが確定したらリストに追加
+        if (targetId) {
+            savedArtists.push({ ...rec, id: targetId })
+        }
     }
 
-    // 3. 中間テーブルに保存
+    // 4. 中間テーブル（関連性）に保存
     if (savedArtists.length > 0) {
         const relationsPayload = savedArtists.map((artist) => ({
             source_artist_id: sourceArtistId,
@@ -64,6 +94,7 @@ export async function saveRelatedArtists(
             reason: artist.reason,
         }))
 
+        // 重複を無視して保存 (onConflict)
         const { error } = await supabase
             .from('related_artists')
             .upsert(relationsPayload, {
@@ -74,63 +105,20 @@ export async function saveRelatedArtists(
         if (error) {
             console.error('Relation save error:', error)
         } else {
-            console.log(`Successfully saved ${savedArtists.length} related artists to DB`)
+            console.log(`Successfully saved ${savedArtists.length} related artists`)
         }
     }
 
     return savedArtists
 }
 
-/**
- * 指定したアーティストの関連アーティストをGemini APIから取得し、
- * artistsテーブルとrelated_artistsテーブルに保存する関数
- */
+// 互換性のために残す場合（使用しないなら削除可）
 export async function fetchAndSaveRelatedArtists(
     sourceArtistName: string,
     sourceArtistId: string,
-    supabase: SupabaseClient
+    supabase: SupabaseClient,
+    getRelatedArtistsFn: (name: string) => Promise<ArtistRecommendation[]>
 ) {
-    console.log(`Fetching related artists for: ${sourceArtistName} via Gemini`)
-
-    try {
-        // 1. Geminiモデルの取得
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
-
-        // 2. プロンプトの作成
-        const prompt = `
-      あなたは音楽の専門家です。
-      アーティスト「${sourceArtistName}」に音楽性が似ている、またはファン層が重なるアーティストを10組挙げてください。
-      
-      出力は以下のJSON形式のみを返してください。余計な説明は不要です。
-      
-      [
-        {
-          "name": "アーティスト名",
-          "reason": "なぜ似ているかの簡潔な理由（30文字以内）",
-          "genres": ["ジャンル1", "ジャンル2"]
-        }
-      ]
-    `
-
-        // 3. AI生成の実行
-        const result = await model.generateContent(prompt)
-        const response = await result.response
-        const text = response.text()
-
-        // JSON部分だけを抽出・パース
-        const jsonString = text.replace(/```json|```/g, '').trim()
-        const recommendations: ArtistRecommendation[] = JSON.parse(jsonString)
-
-        if (!recommendations || recommendations.length === 0) {
-            console.log('No recommendations found.')
-            return []
-        }
-
-        // 4. 共通の保存関数を使用
-        return await saveRelatedArtists(sourceArtistId, recommendations, supabase)
-
-    } catch (error) {
-        console.error('Gemini API Error:', error)
-        throw new Error('Failed to fetch related artists from Gemini')
-    }
+    const recommendations = await getRelatedArtistsFn(sourceArtistName)
+    return await saveRelatedArtists(sourceArtistId, recommendations, supabase)
 }
