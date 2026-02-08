@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
+import { ArrowLeft } from 'lucide-react'
 import SaveRelatedButton from '@/components/SaveRelatedButton'
 
 interface Artist {
@@ -29,6 +30,15 @@ export default function ArtistDetailView({ artist, relatedArtists, artistId }: A
     return (
         <div className="min-h-screen bg-gray-50/50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                {/* ★ 戻るリンク */}
+                <Link
+                    href="/"
+                    className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-900 transition mb-8 group"
+                >
+                    <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                    <span className="text-sm font-medium">Now Playing に戻る</span>
+                </Link>
+
                 <div className="flex flex-col lg:flex-row gap-12">
 
                     {/* --- 左側: 固定されたアーティスト情報 (Sticky Sidebar) --- */}
