@@ -572,6 +572,7 @@ export default function NowPlaying() {
                     </div>
                 )}
 
+                {/* ★ リッチなカードUIとリンク連携 ★ */}
                 {activeTab === 'related' && (
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                         {relatedLoading ? (
@@ -581,13 +582,52 @@ export default function NowPlaying() {
                             </div>
                         ) : relatedArtists.length > 0 ? (
                             relatedArtists.map((artist: any, index: number) => (
-                                <div key={index} className="p-2 rounded-lg bg-gray-800/30 border border-gray-700/50">
-                                    <p className="text-sm font-medium text-white">{artist.name}</p>
-                                    <p className="text-xs text-gray-400 mt-0.5">{artist.reason}</p>
+                                <div key={index} className="group flex items-start space-x-3 p-2 rounded-lg bg-gray-800/30 border border-gray-700/50 hover:bg-gray-800 transition">
+                                    {/* Artist Image (Circle) */}
+                                    <div className="relative w-10 h-10 flex-shrink-0 rounded-full overflow-hidden bg-gray-700 border border-gray-600">
+                                        {artist.image ? (
+                                            <Image src={artist.image} alt={artist.name} fill className="object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-gray-500">
+                                                <User size={16} />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Info & Link */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between">
+                                            {artist.id ? (
+                                                <Link
+                                                    href={`/artists/${artist.id}`}
+                                                    className="text-sm font-medium text-white hover:text-pink-400 transition truncate block flex-1"
+                                                >
+                                                    {artist.name}
+                                                </Link>
+                                            ) : (
+                                                <p className="text-sm font-medium text-white truncate">{artist.name}</p>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-tight">
+                                            {artist.reason}
+                                        </p>
+                                    </div>
+
+                                    {/* Chevron / Action Icon (if ID exists) */}
+                                    {artist.id && (
+                                        <Link
+                                            href={`/artists/${artist.id}`}
+                                            className="text-gray-600 group-hover:text-pink-400 transition self-center"
+                                        >
+                                            <ChevronRight size={16} />
+                                        </Link>
+                                    )}
                                 </div>
                             ))
                         ) : (
-                            <p className="text-sm text-gray-500 text-center py-4">タブをクリックして関連アーティストを取得</p>
+                            <div className="text-center py-4">
+                                <p className="text-sm text-gray-500">関連アーティストが見つかりません</p>
+                            </div>
                         )}
                     </div>
                 )}
