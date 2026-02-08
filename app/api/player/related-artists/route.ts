@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRelatedArtists, RelatedArtist } from '@/lib/gemini';
+import { getRelatedArtists } from '@/lib/gemini';
+import { saveRelatedArtists, ArtistRecommendation } from '@/lib/artist-service';
 import { supabase } from '@/lib/supabase';
 
 const MIN_RELATED_COUNT = 5; // 最低限表示したい件数
@@ -53,15 +54,22 @@ export async function GET(req: NextRequest) {
         const geminiArtists = await getRelatedArtists(artistName);
 
         // 4. Gemini結果を表示用に返す（常に5件表示）
-        // 5. バックグラウンドで重複を除いて保存
+        // 5. バックグラウンドで重複を除いて保存（共通関数を使用）
         if (artistId && geminiArtists.length > 0) {
             const existingNames = new Set(dbArtists.map(a => a.name.toLowerCase()));
             const newArtists = geminiArtists.filter(a => !existingNames.has(a.name.toLowerCase()));
 
             if (newArtists.length > 0) {
-                saveRelatedArtistsToDb(artistId, newArtists).catch(err => {
-                    console.error('Background save error:', err);
-                });
+                // 共通の保存関数を使用
+                const recommendations: ArtistRecommendation[] = newArtists.map(a => ({
+                    name: a.name,
+                    reason: a.reason,
+                    genres: []
+                }));
+
+                saveRelatedArtists(artistId, recommendations, supabase)
+                    .then(() => console.log('Background save complete'))
+                    .catch(err => console.error('Background save failed:', err));
             }
         }
 
@@ -75,63 +83,5 @@ export async function GET(req: NextRequest) {
             { error: 'Failed to fetch related artists' },
             { status: 500 }
         );
-    }
-}
-
-// DBに保存するヘルパー関数
-async function saveRelatedArtistsToDb(sourceArtistId: string, artists: RelatedArtist[]) {
-    console.log(`Saving ${artists.length} new related artists to DB for source: ${sourceArtistId}`);
-
-    const savedArtists = [];
-
-    for (const artist of artists) {
-        // 既存アーティストを名前で検索
-        const { data: existing } = await supabase
-            .from('artists')
-            .select('id')
-            .eq('name', artist.name)
-            .single();
-
-        let targetId = existing?.id;
-
-        if (!targetId) {
-            // 存在しなければ新規作成（IDを明示的に生成）
-            const newId = crypto.randomUUID();
-            const { data: newArtist, error } = await supabase
-                .from('artists')
-                .insert({ id: newId, name: artist.name })
-                .select('id')
-                .single();
-
-            if (error) {
-                console.error(`Error saving artist ${artist.name}:`, error);
-                continue;
-            }
-            targetId = newArtist.id;
-        }
-
-        savedArtists.push({ id: targetId, reason: artist.reason });
-    }
-
-    // 中間テーブルに保存
-    if (savedArtists.length > 0) {
-        const relationsPayload = savedArtists.map((artist) => ({
-            source_artist_id: sourceArtistId,
-            target_artist_id: artist.id,
-            reason: artist.reason,
-        }));
-
-        const { error: relationError } = await supabase
-            .from('related_artists')
-            .upsert(relationsPayload, {
-                onConflict: 'source_artist_id, target_artist_id',
-                ignoreDuplicates: true
-            });
-
-        if (relationError) {
-            console.error('Error saving relations:', relationError);
-        } else {
-            console.log(`Successfully saved ${savedArtists.length} new related artists to DB`);
-        }
     }
 }

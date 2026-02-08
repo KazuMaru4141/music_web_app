@@ -4,10 +4,81 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 // Gemini APIの初期化
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!)
 
-interface ArtistRecommendation {
+// 共通のインターフェース（exportして他でも使えるように）
+export interface ArtistRecommendation {
     name: string
     reason: string
-    genres: string[]
+    genres?: string[]
+}
+
+/**
+ * 関連アーティストをDBに保存する共通関数
+ * Geminiの結果やその他のソースから渡されたリストを保存
+ */
+export async function saveRelatedArtists(
+    sourceArtistId: string,
+    recommendations: ArtistRecommendation[],
+    supabase: SupabaseClient
+) {
+    console.log(`Saving ${recommendations.length} artists to DB...`)
+    const savedArtists = []
+
+    for (const rec of recommendations) {
+        // 1. アーティストの存在確認（名前で検索）
+        const { data: existing } = await supabase
+            .from('artists')
+            .select('id')
+            .eq('name', rec.name)
+            .single()
+
+        let targetId = existing?.id
+
+        if (!targetId) {
+            // 2. 新規作成（IDを明示的に生成）
+            const newId = crypto.randomUUID()
+            const { data: newArtist, error } = await supabase
+                .from('artists')
+                .insert({
+                    id: newId,
+                    name: rec.name,
+                    genres: rec.genres || [],
+                })
+                .select('id')
+                .single()
+
+            if (error) {
+                console.error(`Error saving artist ${rec.name}:`, error)
+                continue
+            }
+            targetId = newArtist.id
+        }
+
+        savedArtists.push({ ...rec, id: targetId })
+    }
+
+    // 3. 中間テーブルに保存
+    if (savedArtists.length > 0) {
+        const relationsPayload = savedArtists.map((artist) => ({
+            source_artist_id: sourceArtistId,
+            target_artist_id: artist.id,
+            reason: artist.reason,
+        }))
+
+        const { error } = await supabase
+            .from('related_artists')
+            .upsert(relationsPayload, {
+                onConflict: 'source_artist_id, target_artist_id',
+                ignoreDuplicates: true
+            })
+
+        if (error) {
+            console.error('Relation save error:', error)
+        } else {
+            console.log(`Successfully saved ${savedArtists.length} related artists to DB`)
+        }
+    }
+
+    return savedArtists
 }
 
 /**
@@ -15,8 +86,8 @@ interface ArtistRecommendation {
  * artistsテーブルとrelated_artistsテーブルに保存する関数
  */
 export async function fetchAndSaveRelatedArtists(
-    sourceArtistName: string, // IDではなく名前を受け取るように変更
-    sourceArtistId: string,   // DB保存用にIDも受け取る
+    sourceArtistName: string,
+    sourceArtistId: string,
     supabase: SupabaseClient
 ) {
     console.log(`Fetching related artists for: ${sourceArtistName} via Gemini`)
@@ -25,7 +96,7 @@ export async function fetchAndSaveRelatedArtists(
         // 1. Geminiモデルの取得
         const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
-        // 2. プロンプトの作成 (JSONで返すように指示)
+        // 2. プロンプトの作成
         const prompt = `
       あなたは音楽の専門家です。
       アーティスト「${sourceArtistName}」に音楽性が似ている、またはファン層が重なるアーティストを10組挙げてください。
@@ -46,7 +117,7 @@ export async function fetchAndSaveRelatedArtists(
         const response = await result.response
         const text = response.text()
 
-        // JSON部分だけを抽出・パース (Markdownのコードブロック除去)
+        // JSON部分だけを抽出・パース
         const jsonString = text.replace(/```json|```/g, '').trim()
         const recommendations: ArtistRecommendation[] = JSON.parse(jsonString)
 
@@ -55,58 +126,8 @@ export async function fetchAndSaveRelatedArtists(
             return []
         }
 
-        // 4. 保存処理 (アーティスト情報の保存)
-        const savedArtists = []
-
-        for (const rec of recommendations) {
-            // 既に同じ名前のアーティストがいるか確認
-            const { data: existing } = await supabase
-                .from('artists')
-                .select('id')
-                .eq('name', rec.name)
-                .single()
-
-            let targetId = existing?.id
-
-            if (!targetId) {
-                // 存在しなければ新規作成
-                const { data: newArtist, error } = await supabase
-                    .from('artists')
-                    .insert({
-                        name: rec.name,
-                        genres: rec.genres,
-                    })
-                    .select('id')
-                    .single()
-
-                if (error) {
-                    console.error(`Error saving artist ${rec.name}:`, error)
-                    continue
-                }
-                targetId = newArtist.id
-            }
-
-            savedArtists.push({ ...rec, id: targetId })
-        }
-
-        // 5. 中間テーブル `related_artists` に関係性を保存
-        const relationsPayload = savedArtists.map((artist) => ({
-            source_artist_id: sourceArtistId,
-            target_artist_id: artist.id,
-            reason: artist.reason,
-        }))
-
-        const { error: relationError } = await supabase
-            .from('related_artists')
-            .upsert(relationsPayload, {
-                onConflict: 'source_artist_id, target_artist_id',
-                ignoreDuplicates: true
-            })
-
-        if (relationError) throw relationError
-
-        console.log(`Successfully saved ${savedArtists.length} related artists via Gemini.`)
-        return savedArtists
+        // 4. 共通の保存関数を使用
+        return await saveRelatedArtists(sourceArtistId, recommendations, supabase)
 
     } catch (error) {
         console.error('Gemini API Error:', error)
