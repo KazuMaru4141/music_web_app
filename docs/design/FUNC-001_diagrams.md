@@ -3,7 +3,7 @@
 ## 1. シーケンス図 (Sequence Diagrams)
 
 ### A. 楽曲評価フロー (Rate Song Flow)
-ユーザーが星アイコンをクリックした際の処理フローです。
+ユーザーが星アイコンをクリックした際の処理フローです。 
 **特徴:** 評価だけでなく、親データの作成、同アルバム内他曲の保存、Spotifyプレイリストへの追加といった「副作用」が発生する点が重要です。
 
 ### A-2. キーボードショートカット評価フロー (Keyboard Shortcut Rating Flow)
@@ -111,7 +111,11 @@ sequenceDiagram
 
     API-->>User: { success: true, sheet: 'added', spotify: 'added' }
     User->>User: Update UI (Star Icon, Toast)
+```
 
+### B. アルバム保存フロー (Save Album Flow)
+
+```mermaid
 sequenceDiagram
     autonumber
     actor User as User (UI)
@@ -144,7 +148,13 @@ sequenceDiagram
 
     API-->>User: { success: true, is_featured: new_state }
     User->>User: Update Heart Icon Color
+```
 
+## 2. 状態遷移図 (State Diagrams)
+
+### 楽曲 (Song) の状態遷移
+
+```mermaid
 stateDiagram-v2
     [*] --> Unknown: Spotify上にはあるが<br>DBにはない
 
@@ -169,7 +179,11 @@ stateDiagram-v2
     end note
 
     Rated --> Rated: 評価更新 (例: 3 -> 5)
+```
 
+### アルバム (Album) の状態遷移
+
+```mermaid
 stateDiagram-v2
     [*] --> New: 初回アクセス
 
@@ -186,3 +200,4 @@ stateDiagram-v2
     end note
 
     Normal --> Featured: 再度Click
+```
