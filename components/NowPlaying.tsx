@@ -40,6 +40,7 @@ export default function NowPlaying() {
     // Refs for keyboard shortcut (avoid re-registering listeners on every render)
     const trackRef = useRef<any>(null);
     const autoNextRef = useRef(true);
+    const isProcessingRef = useRef(false);
     const [ratingFlash, setRatingFlash] = useState(false);
 
     const showToast = (message: string) => setToast(message);
@@ -143,9 +144,16 @@ export default function NowPlaying() {
     };
 
     const handleRate = useCallback(async (star: number) => {
+        // Guard: prevent duplicate execution from rapid key presses
+        if (isProcessingRef.current) return;
+        isProcessingRef.current = true;
+
         setRating(star);
         const currentTrack = trackRef.current;
-        if (!currentTrack) return;
+        if (!currentTrack) {
+            isProcessingRef.current = false;
+            return;
+        }
 
         // Flash effect for visual feedback (especially useful for keyboard shortcuts)
         setRatingFlash(true);
@@ -183,10 +191,16 @@ export default function NowPlaying() {
 
             // Auto-next after rating
             if (isAutoNext) {
-                setTimeout(() => handleControl('next'), 500);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await handleControl('next');
             }
         } catch (e) {
             console.error("Failed to rate", e);
+        } finally {
+            // Release lock after a short delay to prevent rapid re-triggering
+            setTimeout(() => {
+                isProcessingRef.current = false;
+            }, 500);
         }
     }, []);  // No dependencies - uses refs for latest state
 
@@ -296,6 +310,9 @@ export default function NowPlaying() {
                     return;
                 }
             }
+
+            // Guard: ignore key repeat (key held down)
+            if (e.repeat) return;
 
             // Alt (Option) + 1〜5
             if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
