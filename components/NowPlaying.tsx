@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Play, Pause, Plus, SkipBack, SkipForward, ListPlus, CheckCircle2, ChevronRight, User, Disc3, Music, Hash, CalendarDays, Heart, ExternalLink, RefreshCw } from 'lucide-react';
@@ -36,6 +36,11 @@ export default function NowPlaying() {
 
     // Track ID to detect song changes
     const lastTrackIdRef = useRef<string | null>(null);
+
+    // Refs for keyboard shortcut (avoid re-registering listeners on every render)
+    const trackRef = useRef<any>(null);
+    const autoNextRef = useRef(true);
+    const [ratingFlash, setRatingFlash] = useState(false);
 
     const showToast = (message: string) => setToast(message);
 
@@ -137,14 +142,19 @@ export default function NowPlaying() {
         }
     };
 
-    const handleRate = async (star: number) => {
+    const handleRate = useCallback(async (star: number) => {
         setRating(star);
-        if (!track) return;
+        const currentTrack = trackRef.current;
+        if (!currentTrack) return;
+
+        // Flash effect for visual feedback (especially useful for keyboard shortcuts)
+        setRatingFlash(true);
+        setTimeout(() => setRatingFlash(false), 300);
 
         // Optimistic UI update for album tracks and score
         const trackPoints: Record<number, number> = { 1: 0, 2: 10, 3: 60, 4: 80, 5: 100 };
-        const updatedAlbumTracks = track.album_tracks?.map((t: any) =>
-            t.id === track.id ? { ...t, rating: star } : t
+        const updatedAlbumTracks = currentTrack.album_tracks?.map((t: any) =>
+            t.id === currentTrack.id ? { ...t, rating: star } : t
         ) || [];
 
         let totalPoints = 0;
@@ -161,23 +171,24 @@ export default function NowPlaying() {
             album_score: newAlbumScore
         } : prev);
 
-        showToast(`Rated ${star} ★`);
+        const isAutoNext = autoNextRef.current;
+        showToast(isAutoNext ? `Rated ${star} ★ — Skipping...` : `Rated ${star} ★`);
 
         try {
             await fetch('/api/player/like', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ track, rating: star })
+                body: JSON.stringify({ track: currentTrack, rating: star })
             });
 
             // Auto-next after rating
-            if (autoNext) {
+            if (isAutoNext) {
                 setTimeout(() => handleControl('next'), 500);
             }
         } catch (e) {
             console.error("Failed to rate", e);
         }
-    };
+    }, []);  // No dependencies - uses refs for latest state
 
     const handleControl = async (action: 'play' | 'pause' | 'next' | 'previous') => {
         if (controlLoading) return;
@@ -262,11 +273,41 @@ export default function NowPlaying() {
         }
     };
 
+    // Keep refs in sync with state
+    useEffect(() => {
+        trackRef.current = track;
+    }, [track]);
+    useEffect(() => {
+        autoNextRef.current = autoNext;
+    }, [autoNext]);
+
     useEffect(() => {
         fetchFullTrackData(); // Initial full fetch
         const interval = setInterval(pollTrack, 15000); // Lightweight polling
         return () => clearInterval(interval);
     }, []);
+
+    // Keyboard shortcut: Alt + 1〜5 for rating (FUNC-001 Section C)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Guard: ignore when typing in input fields
+            if (e.target instanceof HTMLElement) {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                    return;
+                }
+            }
+
+            // Alt (Option) + 1〜5
+            if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
+                e.preventDefault();
+                const ratingValue = parseInt(e.key, 10);
+                handleRate(ratingValue);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleRate]);
 
     if (error === 'Please login') {
         return (
@@ -411,7 +452,7 @@ export default function NowPlaying() {
                         <button
                             key={star}
                             onClick={() => handleRate(star)}
-                            className={`text-4xl md:text-5xl transition-all duration-200 transform hover:scale-110 active:scale-95 ${rating >= star
+                            className={`text-4xl md:text-5xl transition-all duration-200 transform hover:scale-110 active:scale-95 ${ratingFlash && rating >= star ? 'scale-125 ' : ''}${rating >= star
                                 ? 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]'
                                 : 'text-gray-500 hover:text-gray-300 drop-shadow-[0_0_1px_rgba(255,255,255,0.3)]'
                                 }`}
