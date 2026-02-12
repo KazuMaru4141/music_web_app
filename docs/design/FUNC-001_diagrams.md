@@ -6,6 +6,67 @@
 ユーザーが星アイコンをクリックした際の処理フローです。
 **特徴:** 評価だけでなく、親データの作成、同アルバム内他曲の保存、Spotifyプレイリストへの追加といった「副作用」が発生する点が重要です。
 
+### A-2. キーボードショートカット評価フロー (Keyboard Shortcut Rating Flow)
+`Alt + 1〜5` によるキーボード評価の処理フローです。
+**特徴:** キーリピート防止・処理中ロックによる連打防止ガードを経て、既存の評価API（セクションA）と同一フローに合流します。
+
+#### ガード条件フローチャート
+
+```mermaid
+flowchart TD
+    A["keydown イベント発火"] --> B{"e.target が INPUT / TEXTAREA / contentEditable?"}
+    B -->|Yes| Z["無視 (return)"]
+    B -->|No| C{"e.repeat === true?<br/>キー押しっぱなし"}
+    C -->|Yes| Z
+    C -->|No| D{"e.altKey === true?"}
+    D -->|No| Z
+    D -->|Yes| E{"e.key が 1〜5?"}
+    E -->|No| Z
+    E -->|Yes| F{"isProcessingRef === true?<br/>処理中ロック"}
+    F -->|Yes| Z
+    F -->|No| G["🔒 ロック取得<br/>isProcessingRef = true"]
+    G --> H["handleRate&#40;ratingValue&#41; 実行"]
+```
+
+#### キーボード評価シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Keyboard)
+    participant UI as NowPlaying (React)
+    participant Lock as isProcessingRef
+    participant API as API (/api/player/like)
+    participant Control as API (/api/player/control)
+
+    User->>UI: Alt + 5 押下
+
+    Note over UI: ガード条件チェック<br/>e.repeat / input focus
+
+    UI->>Lock: ロック取得 (true)
+
+    rect rgb(255, 250, 230)
+        Note over UI: Optimistic UI
+        UI->>UI: setRating(5)
+        UI->>UI: Flash Effect (星拡大 300ms)
+        UI->>UI: showToast("Rated 5 ★ — Skipping...")
+    end
+
+    UI->>API: POST /like (track, rating: 5)
+    API-->>UI: { success: true }
+
+    alt Auto-Next ON
+        Note over UI: 500ms 待機
+        UI->>Control: POST /control { action: "next" }
+        Control-->>UI: Success
+    end
+
+    Note over UI: 処理完了後 500ms 遅延
+    UI->>Lock: ロック解除 (false)
+
+    Note over User: Alt + 5 連打しても<br/>ロック中は無視される
+```
+
 ```mermaid
 sequenceDiagram
     autonumber

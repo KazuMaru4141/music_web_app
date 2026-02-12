@@ -64,14 +64,19 @@
 | テキスト入力中 | `e.target.tagName === 'INPUT'` | 検索ボックス等への文字入力と誤認防止 |
 | テキストエリア入力中 | `e.target.tagName === 'TEXTAREA'` | メモ・コメント入力との競合防止 |
 | `contentEditable` 要素 | `e.target.isContentEditable === true` | リッチテキスト編集との競合防止 |
+| キーリピート | `e.repeat === true` | キー押しっぱなし時にOSが連続送信するイベントを無視し、多重評価を防止 |
+| 処理中ロック | `isProcessingRef.current === true` | 前回の評価処理（API通信・Auto-Nextスキップ含む）が完了するまで次の入力を受け付けない |
 
 #### C-3. 処理フロー (Processing Flow)
 1. `window` の `keydown` イベントを検知する。
 2. ガード条件（C-2）を評価し、該当すれば処理を中断する。
 3. 押下キーが `1`〜`5` の数字であることを検証する。
 4. `Alt` (Mac: `Option`) キーが押下されていることを判定する。
-5. 条件合致時、`handleRate(ratingValue)` を呼び出す（セクション A と同一フロー）。
-6. **Optimistic UI:** API レスポンスを待たずに星アイコンの表示を即座に更新する。
+5. `isProcessingRef` のロックを取得し、処理中フラグを `true` に設定する。
+6. 条件合致時、`handleRate(ratingValue)` を呼び出す（セクション A と同一フロー）。
+7. **Optimistic UI:** API レスポンスを待たずに星アイコンの表示を即座に更新する。
+8. Auto-Next 有効時は API 完了後 500ms 待機してからスキップを実行する。
+9. 全処理完了後、500ms の遅延を置いて `isProcessingRef` のロックを解除する。
 
 #### C-4. 実装上の依存関係・注意点 (Implementation Notes)
 
@@ -81,7 +86,9 @@
 | **パフォーマンス最適化** | `handleRate` を `useCallback` でメモ化し、不要なイベントリスナーの再登録を抑制する。さらに `track` や `autoNext` 等の頻繁に更新されるステートは `useRef` 経由で参照し、リスナーの再登録を最小限に抑える。 |
 | **クリーンアップ** | `useEffect` の return 文で `removeEventListener` を必ず実行し、メモリリークを防止する。 |
 | **ブラウザ互換性** | `e.key` プロパティを使用（`e.keyCode` は非推奨）。`e.altKey` で修飾キー判定を行う。主要ブラウザ (Chrome, Edge, Firefox, Safari) で動作確認済みであること。 |
-| **Auto-Next 挙動** | キーボードショートカットによる評価時も Auto-Next 設定に従う。トースト通知に「Skipping...」等のメッセージを明記し、ユーザーが次に何が起きるか理解できるようにする。 |
+| **連打防止 (Processing Lock)** | `isProcessingRef` (`useRef<boolean>`) により、評価処理の開始時にロックを取得し、全処理完了後 500ms の遅延を置いて解除する。ロック中の `handleRate` 呼び出しは即座に `return` する。 |
+| **キーリピート防止** | `e.repeat` プロパティを検査し、キー押しっぱなしによる連続イベント発火を無視する。これにより OS のキーリピート設定に依存した多重実行を防止する。 |
+| **Auto-Next 挙動** | キーボードショートカットによる評価時も Auto-Next 設定に従う。スキップは `await` で待機してから実行し、処理中ロックと組み合わせることで重複スキップを防止する。トースト通知に「Skipping...」等のメッセージを明記し、ユーザーが次に何が起きるか理解できるようにする。 |
 | **視覚フィードバック** | キーボード操作は「押した感」がないため、評価確定時に星アイコンを一瞬拡大するアニメーション（Flash Effect）を追加し、操作の視認性を向上させる。 |
 
 ## 4. 処理ロジック (Processing Logic)
