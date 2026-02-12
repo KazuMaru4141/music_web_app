@@ -156,9 +156,9 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Unknown: Spotify上にはあるが<br>DBにはない
+    [*] --> Unknown: Spotify上にはあるが\nDBにはない
 
-    Unknown --> Unrated: アルバム内の他の曲が評価された<br>(巻き込み保存)
+    Unknown --> Unrated: アルバム内の他の曲が評価された\n(巻き込み保存)
     note right of Unrated
         rate: 0 / null
         is_saved: true
@@ -178,7 +178,7 @@ stateDiagram-v2
         is_saved: true
     end note
 
-    Rated --> Rated: 評価更新 (例: 3 -> 5)
+    Rated --> Rated: 評価更新 (例: 3 → 5)
 ```
 
 ### アルバム (Album) の状態遷移
