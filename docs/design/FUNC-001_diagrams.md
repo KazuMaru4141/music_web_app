@@ -10,7 +10,7 @@
 `Alt + 1〜5` によるキーボード評価の処理フローです。
 **特徴:** キーリピート防止・処理中ロックによる連打防止ガードを経て、既存の評価API（セクションA）と同一フローに合流します。
 
-#### ガード条件フローチャート
+#### ガード条件フローチャート（全ショートカット統合版）
 
 ```mermaid
 flowchart TD
@@ -20,12 +20,16 @@ flowchart TD
     C -->|Yes| Z
     C -->|No| D{"e.altKey === true?"}
     D -->|No| Z
-    D -->|Yes| E{"e.key が 1〜5?"}
-    E -->|No| Z
-    E -->|Yes| F{"isProcessingRef === true?<br/>処理中ロック"}
+    D -->|Yes| E{"e.key の判定"}
+    E -->|"1〜5"| F{"isProcessingRef === true?<br/>処理中ロック"}
     F -->|Yes| Z
     F -->|No| G["🔒 ロック取得<br/>isProcessingRef = true"]
     G --> H["handleRate&#40;ratingValue&#41; 実行"]
+    E -->|"S / s"| I["handleSaveAlbum&#40;&#41; 実行"]
+    E -->|"R / r"| J{"trackRef.current?.artist<br/>が存在する?"}
+    J -->|No| Z
+    J -->|Yes| K["setActiveTab&#40;'related'&#41;<br/>+ fetchRelatedArtists&#40;..., true&#41;"]
+    E -->|Other| Z
 ```
 
 #### キーボード評価シーケンス図
@@ -113,6 +117,97 @@ sequenceDiagram
     User->>User: Update UI (Star Icon, Toast)
 ```
 
+### A-3. キーボードショートカット保存フロー (Keyboard Shortcut Save Album Flow)
+`Alt + S` によるアルバム保存のキーボードショートカットフローです。
+**特徴:** `trackRef` から最新のトラック情報を取得し、既存のアルバム保存API（セクションB）と同一フローに合流します。トグル動作でSave/Unsaveを切り替えます。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Keyboard)
+    participant UI as NowPlaying (React)
+    participant API as API (/api/player/save-album)
+    participant DB as Supabase (DB)
+
+    User->>UI: Alt + S 押下
+
+    Note over UI: ガード条件チェック<br/>e.repeat / input focus
+
+    UI->>UI: trackRef.current からトラック取得
+
+    alt トラックが存在しない
+        UI->>UI: return (何もしない)
+    end
+
+    UI->>API: POST /save-album (track)
+    API->>DB: SELECT is_featured FROM albums
+
+    alt 保存済み (is_featured: true)
+        API->>DB: UPDATE is_featured = false
+        API-->>UI: { is_featured: false }
+        UI->>UI: showToast("Album Removed 💔")
+    else 未保存 / 新規
+        API->>DB: UPSERT is_featured = true
+        API-->>UI: { is_featured: true }
+        UI->>UI: showToast("Album Saved! ❤️")
+    end
+
+    UI->>UI: setTrack({ ...prev, is_album_saved: data.is_featured })
+```
+
+### A-4. キーボードショートカット関連探索フロー (Keyboard Shortcut Related Discovery Flow)
+`Alt + R` による関連アーティスト探索のキーボードショートカットフローです。
+**特徴:** タブ切り替えとAI検索を1キーで同時実行し、「聴く→評価→保存→ディグる」サイクルをキーボードのみで完結させます。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Keyboard)
+    participant UI as NowPlaying (React)
+    participant API as API (/api/player/related-artists)
+    participant Gemini as Gemini AI
+    participant Spotify as Spotify API
+    participant DB as Supabase (DB)
+
+    User->>UI: Alt + R 押下
+
+    Note over UI: ガード条件チェック<br/>e.repeat / input focus
+
+    UI->>UI: trackRef.current からアーティスト取得
+
+    alt アーティストが存在しない
+        UI->>UI: return (何もしない)
+    end
+
+    rect rgb(230, 255, 240)
+        Note over UI: 2アクション同時実行
+        UI->>UI: setActiveTab('related')
+        UI->>UI: showToast("🔍 Searching Related Artists...")
+    end
+
+    UI->>API: GET /related-artists?artist=...&refresh=true
+
+    rect rgb(240, 240, 255)
+        Note over API: 強制リフレッシュモード (refresh=true)
+        API->>Gemini: "${artist}に似たアーティスト10組を推薦"
+        Gemini-->>API: JSON [{ name, reason }, ...]
+
+        loop 各アーティスト
+            API->>Spotify: search(artist_name)
+            Spotify-->>API: { id, image_url, genres }
+        end
+
+        par DB永続化
+            API->>DB: UPSERT artists
+            API->>DB: INSERT related_artists
+        end
+    end
+
+    API-->>UI: アーティストリスト (画像・理由付き)
+    UI->>UI: Related タブにカード表示
+    UI->>UI: setIsRefreshing(false)
+```
+
 ### B. アルバム保存フロー (Save Album Flow)
 
 ```mermaid
@@ -186,17 +281,17 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> New: 初回アクセス
 
-    New --> Featured: ハートアイコンClick
+    New --> Featured: ハートアイコンClick / Alt+S
     note right of Featured
         is_featured: true
         「特集」として表示
     end note
 
-    Featured --> Normal: ハートアイコンClick (解除)
+    Featured --> Normal: ハートアイコンClick / Alt+S (解除)
     note right of Normal
         is_featured: false
         DBには残るが特集ではない
     end note
 
-    Normal --> Featured: 再度Click
+    Normal --> Featured: 再度Click / Alt+S
 ```
