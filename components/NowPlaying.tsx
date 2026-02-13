@@ -103,9 +103,9 @@ export default function NowPlaying() {
     };
 
     // Fetch related artists (only when artist changes or tab selected)
-    const fetchRelatedArtists = async (artistName: string, artistId?: string, refresh: boolean = false) => {
+    const fetchRelatedArtists = useCallback(async (artistName: string, artistId?: string, refresh: boolean = false) => {
         // refreshでない場合のみキャッシュチェック
-        if (!refresh && lastArtistRef.current === artistName && relatedArtists.length > 0) {
+        if (!refresh && lastArtistRef.current === artistName) {
             return;
         }
 
@@ -141,7 +141,7 @@ export default function NowPlaying() {
             setRelatedLoading(false);
             setIsRefreshing(false);
         }
-    };
+    }, []);  // No dependencies - uses refs and setState functions only
 
     const handleRate = useCallback(async (star: number) => {
         // Guard: prevent duplicate execution from rapid key presses
@@ -239,13 +239,14 @@ export default function NowPlaying() {
         }
     };
 
-    const handleSaveAlbum = async () => {
-        if (!track) return;
+    const handleSaveAlbum = useCallback(async () => {
+        const currentTrack = trackRef.current;
+        if (!currentTrack) return;
         try {
             const res = await fetch('/api/player/save-album', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ track })
+                body: JSON.stringify({ track: currentTrack })
             });
             if (!res.ok) {
                 const err = await res.json();
@@ -254,12 +255,12 @@ export default function NowPlaying() {
             const data = await res.json();
             // Toggle the state based on response
             setTrack((prev: any) => prev ? { ...prev, is_album_saved: data.is_featured } : prev);
-            showToast(data.is_featured ? 'Album Saved!' : 'Album Removed');
+            showToast(data.is_featured ? 'Album Saved! ❤️' : 'Album Removed 💔');
         } catch (e: any) {
             console.error("Failed to save album", e);
             alert(`Error: ${e.message}`);
         }
-    };
+    }, []);  // No dependencies - uses trackRef for latest state
 
     const handleAddToQueue = async (uri: string) => {
         try {
@@ -301,7 +302,7 @@ export default function NowPlaying() {
         return () => clearInterval(interval);
     }, []);
 
-    // Keyboard shortcut: Alt + 1〜5 for rating (FUNC-001 Section C)
+    // Keyboard shortcuts: Alt+1〜5 (Rate), Alt+S (Save), Alt+R (Related)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // Guard: ignore when typing in input fields
@@ -314,17 +315,34 @@ export default function NowPlaying() {
             // Guard: ignore key repeat (key held down)
             if (e.repeat) return;
 
-            // Alt (Option) + 1〜5
+            // Alt (Option) + 1〜5: Rate track (FUNC-001 Section C)
             if (e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
                 e.preventDefault();
                 const ratingValue = parseInt(e.key, 10);
                 handleRate(ratingValue);
             }
+
+            // Alt + S: Save/Unsave Album (FUNC-001 Section D)
+            if (e.altKey && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                handleSaveAlbum();
+            }
+
+            // Alt + R: Related Tab + AI Search (FUNC-002 Section B)
+            if (e.altKey && (e.key === 'r' || e.key === 'R')) {
+                e.preventDefault();
+                const currentTrack = trackRef.current;
+                if (currentTrack?.artist) {
+                    setActiveTab('related');
+                    showToast('🔍 Searching Related Artists...');
+                    fetchRelatedArtists(currentTrack.artist, currentTrack.artist_id, true);
+                }
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleRate]);
+    }, [handleRate, handleSaveAlbum, fetchRelatedArtists]);
 
     if (error === 'Please login') {
         return (
