@@ -179,22 +179,23 @@ export interface RelatedArtist {
 // Get Related Artists using Gemini
 export async function getRelatedArtists(artistName: string): Promise<RelatedArtist[]> {
     const prompt = `
-あなたは音楽の専門家です。
-「${artistName}」に音楽的に似ているアーティストを5組挙げてください。
+あなたは熟練の音楽キュレーターです。
+ターゲットアーティスト「${artistName}」の音楽性（ジャンル、ムード、楽器構成、ボーカルスタイルなど）を深く分析し、
+リスナーが次に聴くべき、音楽的に最も関連性の高いアーティストを10組選出してください。
 
-各アーティストについて、以下のJSON形式で出力してください。
-説明以外の出力は不要です。
+選定のガイドライン:
+- 音楽的な類似性（Vibes & Sound）を最優先してください。単にジャンルが同じというだけでなく、「雰囲気が似ている」「ファン層が重なる」アーティストを選んでください。
+- 文脈の整合性: 同名の別アーティストと混同しないよう、活動年代、国、シーン（例: 90s UK Rock, Japanese City Popなど）を考慮してください。
+- 多様性: 定番のフォロワーだけでなく、**「隠れた名アーティスト（Underrated）」**や、少し意外性のある（しかし音楽的に繋がりのある）アーティストも含めてください。
+- 関係のないアーティストは除外: 名前が似ているだけ、あるいは全く異なるジャンルのアーティストは絶対に含めないでください。
+
+出力形式（JSONのみ、説明不要）:
 [
     {
-        "name": "アーティスト名",
-        "reason": "類似している理由（日本語、1文で簡潔に）"
+        "name": "アーティスト名（正確な表記で）",
+        "reason": "類似理由（日本語。「〜のようなギターサウンド」「〜に通じる哀愁」など、音楽的な特徴に触れて具体的に）"
     }
 ]
-
-注意:
-- 音楽スタイル、時代、ジャンル、影響関係などを考慮してください
-- メジャーなアーティストだけでなく、隠れた名アーティストも含めてください
-- 同じレーベル、同じシーン、同じプロデューサーなどの関連性も考慮
 `;
 
     const result = await model.generateContent(prompt);
@@ -207,7 +208,7 @@ export async function getRelatedArtists(artistName: string): Promise<RelatedArti
 
     try {
         const artists: RelatedArtist[] = JSON.parse(cleanJson);
-        return artists.slice(0, 5); // Ensure max 5 artists
+        return artists.slice(0, 10); // Ensure max 10 artists
     } catch (e) {
         console.error("JSON Parse Error for Related Artists", e);
         throw new Error("Failed to parse AI response for related artists");
