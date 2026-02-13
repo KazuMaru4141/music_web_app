@@ -91,6 +91,49 @@
 | **Auto-Next 挙動** | キーボードショートカットによる評価時も Auto-Next 設定に従う。スキップは `await` で待機してから実行し、処理中ロックと組み合わせることで重複スキップを防止する。トースト通知に「Skipping...」等のメッセージを明記し、ユーザーが次に何が起きるか理解できるようにする。 |
 | **視覚フィードバック** | キーボード操作は「押した感」がないため、評価確定時に星アイコンを一瞬拡大するアニメーション（Flash Effect）を追加し、操作の視認性を向上させる。 |
 
+### D. キーボードショートカットによるアルバム保存 (Keyboard Shortcut Save Album)
+* **UIトリガー:** `NowPlaying` 画面表示中に、キーボードの `Alt + S` を押下。
+* **API:** アルバム保存（セクション B）と同一のエンドポイント `POST /api/player/save-album` を使用。
+* **対象コンポーネント:** `components/NowPlaying.tsx`
+* **実装方式:** セクション C と共通の `useEffect` + `window.addEventListener('keydown', ...)` によるグローバルキーイベントリスナー内に処理を追加。
+
+#### D-1. 採用する入力方式
+
+**`Alt + S`** (Mac: `Option + S`) を本機能の入力方式として採用する。
+
+| 操作 | 動作 |
+|---|---|
+| `Alt + S` | アルバムを保存（トグル）。保存済みの場合は保存解除。 |
+
+**採用理由:**
+- `S` = **S**ave の頭文字であり直感的に理解できる
+- `Alt` 修飾キーとの組み合わせで既存ショートカット（`Alt + 1〜5`）と体系が統一される
+- ブラウザの標準キーボードショートカットと競合しない
+
+#### D-2. ガード条件 (Guard Conditions)
+セクション C-2 と同一のガード条件を適用する（テキスト入力中、キーリピート等）。
+ただし、Processing Lock (`isProcessingRef`) は不要（Save 処理は独立しており、連打しても副作用は限定的）。
+
+#### D-3. 処理フロー (Processing Flow)
+1. `window` の `keydown` イベントを検知する。
+2. ガード条件（D-2）を評価し、該当すれば処理を中断する。
+3. `e.altKey === true` かつ `e.key === 's'` または `e.key === 'S'` であることを検証する。
+4. `e.preventDefault()` でブラウザのデフォルト動作（ファイル保存ダイアログ等）を抑止する。
+5. `handleSaveAlbum()` を呼び出す。内部で `trackRef.current` から最新のトラック情報を取得する。
+6. API レスポンスに基づき、`track.is_album_saved` ステートを更新する。
+7. 結果に応じたトースト通知を表示する:
+    * 保存時: `"Album Saved! ❤️"`
+    * 解除時: `"Album Removed 💔"`
+
+#### D-4. 実装上の依存関係・注意点 (Implementation Notes)
+
+| 項目 | 詳細 |
+|---|---|
+| **`useCallback` メモ化** | `handleSaveAlbum` を `useCallback` でメモ化し、`useEffect` の依存配列に安定した参照を含める。 |
+| **`trackRef` 経由の状態参照** | `handleSaveAlbum` 内ではクロージャの `track` ではなく `trackRef.current` を使用し、最新のトラック情報を安全に参照する。これにより `useCallback` の依存配列を空にでき、リスナーの再登録を抑制する。 |
+| **トグル動作** | 同一のショートカットで保存/解除を切り替える。APIの返却値 `data.is_featured` で現在の状態を判定する。 |
+| **依存配列** | `useEffect` の依存配列に `handleSaveAlbum` を追加する（`handleRate`, `fetchRelatedArtists` と並列）。 |
+
 ## 4. 処理ロジック (Processing Logic)
 
 ### A. 楽曲評価フロー (Rate Logic)
